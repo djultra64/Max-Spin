@@ -10,7 +10,9 @@ From an environment where those native tools and dependencies are discoverable:
 
 ```sh
 cmake -S windows/native -B build/native-windows -G Ninja \
-  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_FLAGS_RELEASE="-O1 -DNDEBUG" -DCMAKE_CXX_FLAGS_RELEASE="-O1 -DNDEBUG"
 cmake --build build/native-windows --parallel
 python native-linux/tools/setup_game.py --build-dir build/native-windows/title
 ```

@@ -1,0 +1,17 @@
+{
+  "author": "djultra64",
+  "baseline_sdk": 136,
+  "patch_sha256": "b33f1ad81488660d9502191fbddd39e972d3f9798a553e337b0f03d02abd3d96",
+  "files": [
+    {
+      "path": "src/input/CMakeLists.txt",
+      "baseline_sha256": "39644ce64a0799a44043d93d797d8dab28cf9e4d65ea9519a14e94b346d2bc55",
+      "result_sha256": "1b2aea43af599319882f19c2da5e96d95d5bea74078cedb11cf3859a0464b5f6"
+    },
+    {
+      "path": "src/apu/apu_mmio_hook.c",
+      "baseline_sha256": "8f260d96cfef271eed5362a6d3e757efd6de66e887cca719423b26934fab00d2",
+      "result_sha256": "423abd93d167ef662d9290d19e5f9a35661f98b314dec242d51f0067bc556631"
+    }
+  ]
+}

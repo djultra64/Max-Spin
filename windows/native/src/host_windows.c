@@ -63,6 +63,15 @@ char *topspin_windows_realpath(const char*p,char*out){wchar_t*w=wide(p);if(!w)re
 char **topspin_windows_utf8_argv(int count,wchar_t**wide_args){char**args=calloc((size_t)count+1,sizeof*args);if(!args)return NULL;for(int i=0;i<count;i++){int n=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,wide_args[i],-1,NULL,0,NULL,NULL);if(n<=0||(args[i]=malloc((size_t)n))==NULL||!WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,wide_args[i],-1,args[i],n,NULL,NULL))return NULL;}for(int i=1;i<count;i++)for(char*c=args[i];*c;c++)if(*c=='\\')*c='/';return args;}
 int topspin_windows_poll_input(void){
  extern void xbox_HostInputFocus(int),xbox_HostInputKey(int,int);
+#ifdef TOPSPIN_XBE_NAME
+ /* Optional host-thread samples: no guest state writes or default polling. */
+ extern void guest_turn_counts(uint64_t*,uint64_t*);
+ extern long guest_turn_longest_wait_ms(void);
+ extern int guest_turn_probe(char*,size_t,char*,size_t);
+ static int trace=-1;static ULONGLONG last;static uint64_t previous_handoffs,previous_sleeps;
+ if(trace<0){const char*value=getenv("TOPSPIN_GUEST_TURN_TRACE");trace=value&&!strcmp(value,"1");}
+ if(trace){ULONGLONG now=GetTickCount64();if(now-last>=1000){uint64_t handoffs,sleeps;char holder[256];guest_turn_counts(&handoffs,&sleeps);guest_turn_probe(holder,sizeof holder,NULL,0);fprintf(stderr,"[GUEST-TURN] elapsed_ms=%llu handoffs=%llu delta_handoffs=%llu cv_sleeps=%llu delta_cv_sleeps=%llu longest_wait_ms=%ld holder=%s\n",(unsigned long long)(now-last),(unsigned long long)handoffs,(unsigned long long)(handoffs-previous_handoffs),(unsigned long long)sleeps,(unsigned long long)(sleeps-previous_sleeps),guest_turn_longest_wait_ms(),holder);last=now;previous_handoffs=handoffs;previous_sleeps=sleeps;}}
+#endif
  static HANDLE quit;static int initialized;static unsigned char before[256];
  if(!initialized){wchar_t name[128];if(GetEnvironmentVariableW(L"MAX_SPIN_QUIT_EVENT",name,128))quit=OpenEventW(SYNCHRONIZE,FALSE,name);initialized=1;}
  if(quit&&WaitForSingleObject(quit,0)==WAIT_OBJECT_0)return 1;
