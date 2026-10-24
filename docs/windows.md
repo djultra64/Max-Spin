@@ -1,6 +1,6 @@
 # Windows status and development build
 
-Native Windows support is under development. A successful build alone does not establish complete graphics, audio, controller, mode transition, or save compatibility. Treat Windows builds as experimental until a release documents its actual validation.
+Native Windows testing has exercised the original **Menu → Exhibition → Game** flow, including a serve. This verifies a limited gameplay flow; complete graphics, audio, controller, mode transition, Career, and save compatibility remain under test. Windows builds are experimental.
 
 ## Building
 
@@ -31,4 +31,4 @@ MaxSpin.exe --assets "GAME_DIRECTORY" --resources "RESOURCE_DIRECTORY" --image m
 
 Without `--saves`, saves default to the `Max Spin/Saves` folder under Windows Local AppData. Keep that directory when resetting graphics preferences. If `--assets` is omitted, the launcher can ask you to select the original `default.xbe`.
 
-Windows gameplay, high frame rate physics, and broad controller/save compatibility are not claimed by these developer build instructions. Report failures with reproduction steps and a redacted log excerpt, without uploading original game files or saves.
+Complete matches and mode coverage, high frame rate physics, and broad controller/save compatibility are not established by this limited validation. Report failures with reproduction steps and a redacted log excerpt, without uploading original game files or saves.

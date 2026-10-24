@@ -24,6 +24,8 @@ set(TOPSPIN_IMAGE menu CACHE STRING "Initial image")
 set(TOPSPIN_ADDITIONAL_IMAGES "boot;game;career;training;playercreator;shop;online;stop" CACHE STRING "Additional images")
 get_filename_component(MAXSPIN_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 add_compile_options("-ffile-prefix-map=${MAXSPIN_SOURCE_ROOT}=." "-fdebug-prefix-map=${MAXSPIN_SOURCE_ROOT}=.")
+add_compile_options("-ffile-prefix-map=${TOPSPIN_SDK_ROOT}=vendor/xboxrecomp"
+                    "-fdebug-prefix-map=${TOPSPIN_SDK_ROOT}=vendor/xboxrecomp")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../native-linux" title)
 
 add_executable(MaxSpin WIN32 src/launcher_windows.c "${MAXSPIN_SOURCE_ROOT}/native-linux/src/graphics_settings.c" src/graphics_settings_windows.c)

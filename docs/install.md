@@ -26,7 +26,7 @@ Linux runtime libraries are supplied by your system. A missing-library error sho
 
 ## Windows
 
-Windows native previews remain experimental. A completed Windows package includes its non-system runtime DLLs. Keep `MaxSpin.exe`, the nine `topspin_<module>.exe` files, and those DLLs together in the extracted package folder.
+Windows native previews remain experimental. The verified gameplay flow and remaining limits are described in [Windows status](windows.md). A completed Windows package includes its non-system runtime DLLs. Keep `MaxSpin.exe`, the nine `topspin_<module>.exe` files, and those DLLs together in the extracted package folder.
 
 From PowerShell in that folder:
 

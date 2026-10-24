@@ -2,9 +2,9 @@
 
 Max Spin is an experimental native PC recompilation project for the original Xbox version of **Top Spin**, maintained by **djultra64**. It combines locally generated game code with an open source compatibility runtime and PC controls and graphics integration.
 
-**You must supply your own extracted game files.** This repository does not include the game, executable images, music, movies, textures, save files, or generated translations of the original executable code.
+**You must supply your own extracted game files.** This source tree excludes the original Xbox executable images, game assets, saves, and game-derived generated C. Native release packages include compiled game modules and still require your own extracted game files; the project license does not license the underlying game code.
 
-**Experimental preview.** The Linux implementation uses SDL3 and Vulkan. Windows support is under development; see [Windows status](docs/windows.md). The default is a **60 FPS host cap**; sustained 60 FPS and validated 120 FPS gameplay are not promised. Online play is not validated.
+**Experimental preview.** Linux and Windows use SDL3 and Vulkan. Native Windows testing has exercised the original Menu → Exhibition → Game flow, including a serve. See [Windows status](docs/windows.md) for the scope of that validation. The default is a **60 FPS host cap**; sustained 60 FPS across all scenes and validated 120 FPS gameplay are not promised. Online play is not validated.
 
 On the current Linux build, loading an existing Career has been exercised. Some appearance variants can still have black materials or incomplete clothing previews. New-save behavior on this build, complete Career progression, every appearance variant, and visual recovery after a failed save remain under test. Graphics, mode transitions, input devices, and save compatibility can still have defects.
 
