@@ -1,0 +1,146 @@
+{
+  "title": "Xelu's Free Controller Prompts",
+  "creator": "Nicolae (Xelu) Berbece",
+  "updated_by": "Paul Paun (2021)",
+  "license": "CC0-1.0",
+  "source": "https://thoseawesomeguys.com/prompts/",
+  "archive_sha256": "2848fd4259437a6f594f81ff8d8d7a1f922397c7e9da163b2535aa82ae1df037",
+  "modifications": "None; original PNG files selected from the official pack.",
+  "files": [
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_A.png",
+      "file": "XboxSeriesX_A.png",
+      "sha256": "913e59774cd9b6ae299b83c149e6bbebb1fea02608e1cd39f4b4ac313102f6bd"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_B.png",
+      "file": "XboxSeriesX_B.png",
+      "sha256": "329d67ca44ca0f2e059189c33bbf0f25eb8876edfdb5a0ef180e9f81de3fd72e"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_X.png",
+      "file": "XboxSeriesX_X.png",
+      "sha256": "127b823d5b9d2877fb8c09fa038940d62a95e5fdeedfab64c9fd76b0afb7fbae"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_Y.png",
+      "file": "XboxSeriesX_Y.png",
+      "sha256": "17253bd37c1be71e2c651b4030ddf23a1b33f138663d4dbd7912597a086fe12e"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_LB.png",
+      "file": "XboxSeriesX_LB.png",
+      "sha256": "e6c8540376270ac0124934959215ffebe4e12d3d22611609d7bd6f270eeab4d6"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_RB.png",
+      "file": "XboxSeriesX_RB.png",
+      "sha256": "75189a98a32bd2c2603776a74c594c4d554e379ebe5c5d05275983d70ceac09f"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_View.png",
+      "file": "XboxSeriesX_View.png",
+      "sha256": "39e9f46bd4f9e926b342f837bdb58056898985922d49027184cbfbd8a7915483"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_Menu.png",
+      "file": "XboxSeriesX_Menu.png",
+      "sha256": "fd786f34679308c0b6dab39701d8319d82415fa0a200021e705c8aba9c7804a3"
+    },
+    {
+      "source_entry": "PS5/PS5_Cross.png",
+      "file": "PS5_Cross.png",
+      "sha256": "fcc46fba8272fdb4504be36491945359b6ce2f67a7f59818cfa53fc8cd4862a2"
+    },
+    {
+      "source_entry": "PS5/PS5_Circle.png",
+      "file": "PS5_Circle.png",
+      "sha256": "2a328b6588ed8dfa3755bb49be35d4987cf10c3ace874de3b3904d53e26d30fa"
+    },
+    {
+      "source_entry": "PS5/PS5_Square.png",
+      "file": "PS5_Square.png",
+      "sha256": "e99d2c2e825654fb778045a7dcbbfb612b51991161e759638ab87161bd1c2899"
+    },
+    {
+      "source_entry": "PS5/PS5_Triangle.png",
+      "file": "PS5_Triangle.png",
+      "sha256": "566d6fa9a4ff45c9f77822bdee532a2f10402caad7219f6a4601a3f81d79bcd9"
+    },
+    {
+      "source_entry": "PS5/PS5_L1.png",
+      "file": "PS5_L1.png",
+      "sha256": "e63bcc131a4f2d7a7ccb4929e76fe5bfa0e9c1c8a3ce13f2b6198d742867a08b"
+    },
+    {
+      "source_entry": "PS5/PS5_R1.png",
+      "file": "PS5_R1.png",
+      "sha256": "b41fc6c4e8ca392bdafde0e024e956f74995a74f3933bdb49859e36857ebcee5"
+    },
+    {
+      "source_entry": "PS5/PS5_Share.png",
+      "file": "PS5_Share.png",
+      "sha256": "27fa4eab9183483f89199087b090954fddf62dfad992f8a56efad45adf7a9254"
+    },
+    {
+      "source_entry": "PS5/PS5_Options.png",
+      "file": "PS5_Options.png",
+      "sha256": "56daa6b3eaa192543ad753e1d71075c64604c06778bb061923ef48d3641884cd"
+    },
+    {
+      "source_entry": "Switch/Switch_B.png",
+      "file": "Switch_B.png",
+      "sha256": "f41fd9a72787acf40e9ba2c0a741a236c439000db45b0e41eff6929103606a5b"
+    },
+    {
+      "source_entry": "Switch/Switch_A.png",
+      "file": "Switch_A.png",
+      "sha256": "de84db5539a123165dbd497a2dc5a0a4b4994b52a038776d781c52293e9b323f"
+    },
+    {
+      "source_entry": "Switch/Switch_Y.png",
+      "file": "Switch_Y.png",
+      "sha256": "81102d3f7f717d1fdbcd128f99af3af28e0d7c6268b584bd645b83c0ff8c226a"
+    },
+    {
+      "source_entry": "Switch/Switch_X.png",
+      "file": "Switch_X.png",
+      "sha256": "e244cd25e59dc5ccc72be582156218b2811dea7bcd8276ba3d2f547bc13d931a"
+    },
+    {
+      "source_entry": "Switch/Switch_LB.png",
+      "file": "Switch_LB.png",
+      "sha256": "fe92dea776278dca97c1a9463494c28f78a700f66bba92f4fb8a4a0d34203eef"
+    },
+    {
+      "source_entry": "Switch/Switch_RB.png",
+      "file": "Switch_RB.png",
+      "sha256": "5c6403d2192cbe6858caebb2c464a987e5ae04d04883fc6fa1cf4e885ce64dde"
+    },
+    {
+      "source_entry": "Switch/Switch_Minus.png",
+      "file": "Switch_Minus.png",
+      "sha256": "524f925938bae09a4277b9618d865c8479c740ba43805f92b4341c1e96e01b58"
+    },
+    {
+      "source_entry": "Switch/Switch_Plus.png",
+      "file": "Switch_Plus.png",
+      "sha256": "0569561db9ca68a95d50a1087197050a38da5d1941769de3dd92ec04a0142be6"
+    },
+    {
+      "source_entry": "Xbox Series/XboxSeriesX_Right_Stick.png",
+      "file": "XboxSeriesX_Right_Stick.png",
+      "sha256": "21cbd553bd552a14e11be5e5ff5cdd9eb52f9ef1bac462148550d1c35a6b9a44"
+    },
+    {
+      "source_entry": "PS5/PS5_Right_Stick.png",
+      "file": "PS5_Right_Stick.png",
+      "sha256": "f6d26c0b7a3a887f58a14907e74e54ef684f77e5db444f477fdd709ac072029b"
+    },
+    {
+      "source_entry": "Switch/Switch_Right_Stick.png",
+      "file": "Switch_Right_Stick.png",
+      "sha256": "28d033ffbe7c7452bfebaecbf812c0ea4092965c779e27f30090ecb34565fa05"
+    }
+  ]
+}

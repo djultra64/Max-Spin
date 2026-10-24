@@ -1,0 +1,17 @@
+--- a/src/input/CMakeLists.txt
++++ b/src/input/CMakeLists.txt
+@@ -14,11 +14,10 @@
+ 
+ if(WIN32)
+     target_sources(xbox_input PRIVATE input_host.c)
+-    target_link_libraries(xbox_input PUBLIC platform xinput winmm)
++    target_link_libraries(xbox_input PUBLIC platform xinput1_4 winmm)
+     if(XBOXRECOMP_SDL3)
+-        list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../cmake)
+-        include(xbox_sdl3)
+-        target_link_libraries(xbox_input PUBLIC SDL3::SDL3-static)
++        find_package(SDL3 REQUIRED CONFIG)
++        target_link_libraries(xbox_input PUBLIC SDL3::SDL3)
+         target_compile_definitions(xbox_input PUBLIC XBOXRECOMP_HAVE_SDL3=1)
+     endif()
+ elseif(XBOXRECOMP_SDL3)

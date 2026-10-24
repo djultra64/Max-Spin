@@ -1,0 +1,93 @@
+{
+  "author": "djultra64",
+  "patches": [
+    {
+      "path": "windows-runtime.patch",
+      "sha256": "e0a614bf71d33f25ed11f9724e66b879c88c46a3c315beb1e7f6b21ba3befd7e",
+      "files": [
+        {
+          "path": "src/kernel/kernel_bridge.c",
+          "baseline_sha256": "a603d542401f746699bf6f8c30a2080002f02a66dea9cdc7ceda6f1702b89489",
+          "result_sha256": "c7ccc061da4b9fe2b2954ca8b7bd21364eaea9df896cdfee1e38a5a6626f71f5"
+        },
+        {
+          "path": "src/kernel/kernel_rtl.c",
+          "baseline_sha256": "36d4328f978dd65ea1ef99ae552249a736dde39ca845b462af681d665bae8e8c",
+          "result_sha256": "d2caa219c94b08c32dafc92e4e274a53334c45e5402c293cc12d12d625521161"
+        },
+        {
+          "path": "src/kernel/kernel_thread.c",
+          "baseline_sha256": "f051a0666b826008ba40c60da3967f116ff73272e9c150d119340eebc90a86c0",
+          "result_sha256": "ade4b794ef9d14026353128f1349e7c5ee283ea66371aae98a9f3c9d41068654"
+        },
+        {
+          "path": "src/kernel/nv2a_executor_job.c",
+          "baseline_sha256": "49c3da5ced32dcc8d352b619401a936d9e4dcb1c7a522002d8e23b9ebe75c8b7",
+          "result_sha256": "929a159e225de873a815a31a20e0612e32a12147cc2cdc815c71cf421ec6f0fb"
+        },
+        {
+          "path": "src/kernel/nv2a_pb_exec.c",
+          "baseline_sha256": "408406d9ab4ed066f526ad6336acf774a6c4a4fa5c440656a7d0451f0718684e",
+          "result_sha256": "ec1ef43a1ae18e69e4b7b9894ebcc3b456b9d6d2d34cb1f1f2c1885967451dff"
+        },
+        {
+          "path": "src/kernel/xbox_memory_layout.c",
+          "baseline_sha256": "fc4b2ba2b6fa40d4a5e90a769346539b990f3d23c5511ff6cf8d3c0491db796d",
+          "result_sha256": "9886e03890d41999b0aab30fb82098c0ca99743f7253a44e5bd364c2ade8846c"
+        },
+        {
+          "path": "src/platform/CMakeLists.txt",
+          "baseline_sha256": "4bc2b669c8aa1d9ef7ee85ddf4a6155472dcca4f0a1424932a6da21b2ad5d429",
+          "result_sha256": "2254655b8253b202424b6c2409658590ef0a62c557b74ad01a1bc0e4714f11e6"
+        },
+        {
+          "path": "src/platform/xbox_winnt.h",
+          "baseline_sha256": "19ec755d3ae1991e1b1ac68f606a79b6e590a806c3165e817dd214ac1e99ca88",
+          "result_sha256": "20e48be0ca2a724fb9153cad60f3c4198ab0c32c6fe4bbc4c96340907abb28dc"
+        }
+      ]
+    },
+    {
+      "path": "windows-save-runtime.patch",
+      "sha256": "2c46d2d68892f2c3a0453d7151e40fbf244599d223dc2f405c1d01a4c3948f03",
+      "files": [
+        {
+          "path": "src/kernel/kernel_bridge.c",
+          "baseline_sha256": "c7ccc061da4b9fe2b2954ca8b7bd21364eaea9df896cdfee1e38a5a6626f71f5",
+          "result_sha256": "f415f163cb8f9f92d0afd464c8d183d938ae6a751404470561e6dc06965e3dc0"
+        },
+        {
+          "path": "src/kernel/kernel_file.c",
+          "baseline_sha256": "19b0af02084ae01668ebd143249426c7cab7bd1266090d2219fae1e570a39f11",
+          "result_sha256": "f6eb0f588cbb8a9a8e9423f313a15fecda779acf1b07e5f53e59097311841c51"
+        }
+      ]
+    }
+  ],
+  "runtime_sources": [
+    {
+      "path": "guest_thread_windows.h",
+      "sha256": "4e79bbe4cb037e51d7e2863b0e267e4e0f563edd5916ecb7f5e72521e3611c5e"
+    },
+    {
+      "path": "guest_turn_windows.c",
+      "sha256": "f160154238aeb4a573d552155bfbdfee43935c750dbbcee265cbea5ade66270c"
+    },
+    {
+      "path": "guest_turn_windows.h",
+      "sha256": "7e3fd1686f3f468e71c9f5b1ea748c83dfb390d872eec665d5c7fbac56899165"
+    },
+    {
+      "path": "material_save_transaction_windows.c",
+      "sha256": "ea1a47a8fcbee219c05e2aec8438c8b40572e668ab3ac94ae6898232bb7d8c72"
+    },
+    {
+      "path": "material_save_transaction_windows.h",
+      "sha256": "2591586c756bc62ab79f1a429a1bf45948480b0c55c9e0020193981b35a83c76"
+    },
+    {
+      "path": "nv2a_progress_windows.c",
+      "sha256": "045864ac85564bf6c7f9ab4445aad779c35efd43e911e99f1fac10e2c075bf9c"
+    }
+  ]
+}

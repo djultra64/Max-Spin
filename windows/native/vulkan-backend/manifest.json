@@ -1,0 +1,32 @@
+{
+  "author": "djultra64",
+  "baseline_sdk": 136,
+  "scope": "configuration and backend guards only; native Windows host remains unported",
+  "patch_sha256": "020ee8f903ffa7b1416bb2a35c8028fb06dc5be0506eaaf09851dcb097c7c174",
+  "files": {
+    "src/d3d/CMakeLists.txt": {
+      "baseline_sha256": "69436d992118da28969e0496f0e30b5463a94dd432b55da6411e6b97be1e967d",
+      "result_sha256": "95b209945e09523ae55a5bfbff2b8b0dc7d7157275b19af4798e80652887c046"
+    },
+    "src/d3d/d3d8_combiners.c": {
+      "baseline_sha256": "606c3017fc7123c59bad4c442587796fc73d9f3cce3f16f8abddd37842acd27c",
+      "result_sha256": "1b1f8a16aa92f9a3e4d92cad22ec93b8f7145be71eb5d9506f8466467148780c"
+    },
+    "src/d3d/d3d8_combiners.h": {
+      "baseline_sha256": "edc3f7426109c68fae5c71c9fb0d3bda909061222fd4d1cf086bb33d3113c433",
+      "result_sha256": "9d5c74df7d4b5cf5fc265e28c31ce7c8472294026b11b3f0893d46d241e16fbc"
+    },
+    "src/nv2a/nv2a_pgraph_d3d11.c": {
+      "baseline_sha256": "5d6054a29a2664c0e48a987d01f037beaf8d25b2e1b34608d817609a92b912db",
+      "result_sha256": "6a3074d65249a201891ff7457a5dcacf579303e1c56990ebb2ac16940fdf30b3"
+    },
+    "src/nv2a/nv2a_pgraph_d3d11.h": {
+      "baseline_sha256": "a5536aae54c6b8b1b4404d5858ded1efe8b48ee4fda6c442b090bdb232587cc7",
+      "result_sha256": "3fc574f646a9f4ea562de46f5541ea19f4c1a66b112af09bdbe9379ec885539b"
+    },
+    "src/d3d/d3d8_vk.c": {
+      "baseline_sha256": "7a3fe0ed70b059029169e1748da74cc4c74fe35bf857f2843f8b02c82b4fb99e",
+      "result_sha256": "c8cc2e3c6734e94a622612d76a1981533e838d2172a2abd2bac958942190ab08"
+    }
+  }
+}

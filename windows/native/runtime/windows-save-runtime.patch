@@ -1,0 +1,319 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -868,8 +868,14 @@
+     if (raw_handle && raw_handle != 0xDEAD0001u && raw_handle != 0xBEEF0010u) {
+         HANDLE h = bridge_take_handle(raw_handle);
+         if (h && h != INVALID_HANDLE_VALUE) {
++#if defined(_WIN32)
++            /* Preserve native transaction tracking on the actual import path. */
++            g_eax=(uint32_t)xbox_NtClose(h);
++            return;
++#else
+             xbox_dir_context_drop(h);
+             CloseHandle(h);
++#endif
+         }
+     }
+     g_eax = 0; /* STATUS_SUCCESS */
+--- a/src/kernel/kernel_file.c
++++ b/src/kernel/kernel_file.c
+@@ -70,9 +70,72 @@
+ }
+ 
+ #if defined(_WIN32)
++#include "material_save_transaction_windows.h"
++int xbox_SaveTransactionIOVersion(void){return 3;}
+ /* ====================  Win32 backend  =================================== */
+ /* ======================================================================== */
+ 
++/* Native equivalent of the shared FATX geometry contract. A directory open
++ * of a partition image retains the image identity instead of querying the host
++ * filesystem's default cluster size. Own Windows integration: djultra64. */
++#define NATIVE_VOLUME_HANDLES 64
++static SRWLOCK native_volume_lock=SRWLOCK_INIT;
++static struct {HANDLE handle;WCHAR image[MAX_PATH];} native_volumes[NATIVE_VOLUME_HANDLES];
++static int native_fatx_image_name(const WCHAR *path){
++    const WCHAR *name=wcsrchr(path,L'\\');name=name?name+1:path;
++    return wcslen(name)==14&&!_wcsnicmp(name,L"Partition",9)&&name[9]>=L'1'&&name[9]<=L'5'&&!_wcsicmp(name+10,L".img");
++}
++static int native_volume_record(HANDLE handle,const WCHAR *image){
++    AcquireSRWLockExclusive(&native_volume_lock);
++    for(unsigned i=0;i<NATIVE_VOLUME_HANDLES;i++)if(!native_volumes[i].handle){
++        native_volumes[i].handle=handle;wcscpy(native_volumes[i].image,image);
++        ReleaseSRWLockExclusive(&native_volume_lock);return 1;
++    }
++    ReleaseSRWLockExclusive(&native_volume_lock);return 0;
++}
++static void native_volume_drop(HANDLE handle){
++    AcquireSRWLockExclusive(&native_volume_lock);
++    for(unsigned i=0;i<NATIVE_VOLUME_HANDLES;i++)if(native_volumes[i].handle==handle){native_volumes[i].handle=NULL;break;}
++    ReleaseSRWLockExclusive(&native_volume_lock);
++}
++static int native_volume_image(HANDLE handle,WCHAR image[MAX_PATH]){
++    int found=0;AcquireSRWLockShared(&native_volume_lock);
++    for(unsigned i=0;i<NATIVE_VOLUME_HANDLES;i++)if(native_volumes[i].handle==handle){wcscpy(image,native_volumes[i].image);found=1;break;}
++    ReleaseSRWLockShared(&native_volume_lock);return found;
++}
++static BOOL native_volume_space(HANDLE handle,PULARGE_INTEGER free_bytes,PULARGE_INTEGER total_bytes,PULARGE_INTEGER total_free){
++    WCHAR path[MAX_PATH];const WCHAR *directory=NULL;BY_HANDLE_FILE_INFORMATION info;
++    DWORD n=GetFinalPathNameByHandleW(handle,path,MAX_PATH,FILE_NAME_NORMALIZED|VOLUME_NAME_DOS);
++    if(n&&n<MAX_PATH&&GetFileInformationByHandle(handle,&info)){
++        if(!(info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)){WCHAR *slash=wcsrchr(path,L'\\');if(slash)*slash=0;else path[0]=0;}
++        if(path[0])directory=path;
++    }
++    return GetDiskFreeSpaceExW(directory,free_bytes,total_bytes,total_free);
++}
++static int native_fatx_geometry(HANDLE handle,unsigned *sectors,uint64_t *bytes){
++    WCHAR image[MAX_PATH];int separate=native_volume_image(handle,image);
++    if(!separate){DWORD n=GetFinalPathNameByHandleW(handle,image,MAX_PATH,FILE_NAME_NORMALIZED|VOLUME_NAME_DOS);if(!n||n>=MAX_PATH)return 0;}
++    if(!native_fatx_image_name(image))return 0;
++    HANDLE input=handle;
++    if(separate){input=CreateFileW(image,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(input==INVALID_HANDLE_VALUE)return 0;}
++    BY_HANDLE_FILE_INFORMATION info;int ok=GetFileInformationByHandle(input,&info)&&!(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT));
++    /* Raw guest partition handles may use FILE_FLAG_NO_BUFFERING. VirtualAlloc
++     * supplies allocation-granularity alignment, and 64KiB is a valid transfer
++     * multiple for the sector sizes supported by this virtual disk. */
++    unsigned char *header=ok?VirtualAlloc(NULL,65536,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE):NULL;
++    LARGE_INTEGER zero={0},previous;int have_position=header&&SetFilePointerEx(input,zero,&previous,FILE_CURRENT);
++    DWORD got=0;OVERLAPPED at={0};
++    if(!have_position||!ReadFile(input,header,65536,&got,&at)||got<16)ok=0;
++    if(have_position&&!SetFilePointerEx(input,previous,NULL,FILE_BEGIN))ok=0;
++    if(ok&&memcmp(header,"FATX",4))ok=0;
++    if(ok){unsigned n=(unsigned)header[8]|((unsigned)header[9]<<8)|((unsigned)header[10]<<16)|((unsigned)header[11]<<24);
++        uint64_t length=((uint64_t)info.nFileSizeHigh<<32)|info.nFileSizeLow;
++        ok=n&&n<=128&&!(n&(n-1))&&length>=(uint64_t)512*n;
++        if(ok){*sectors=n;*bytes=length;}
++    }
++    if(header)VirtualFree(header,0,MEM_RELEASE);if(separate)CloseHandle(input);return ok;
++}
++
+ /* Convert Xbox create disposition to Win32 */
+ static DWORD xbox_disposition_to_win32(ULONG Disposition)
+ {
+@@ -132,9 +195,9 @@
+         if (win_path[used - 1] != L'\\') win_path[used++] = L'\\';
+         int count = MultiByteToWideChar(CP_ACP, 0, xbox_path, -1,
+             win_path + used, (int)(buf_size - used));
+-        return count != 0;
++        return count != 0 && xbox_save_path_transaction_windows(win_path,buf_size);
+     }
+-    return xbox_translate_path(xbox_path, win_path, buf_size);
++    return xbox_translate_path(xbox_path, win_path, buf_size) && xbox_save_path_transaction_windows(win_path,buf_size);
+ }
+ 
+ NTSTATUS __stdcall xbox_NtCreateFile(
+@@ -144,6 +207,7 @@
+     ULONG CreateDisposition, ULONG CreateOptions)
+ {
+     WCHAR win_path[MAX_PATH];
++    WCHAR volume_image[MAX_PATH]={0};
+     HANDLE h;
+     DWORD flags_and_attrs = FILE_ATTRIBUTE_NORMAL;
+     (void)AllocationSize;
+@@ -156,6 +220,11 @@
+         return STATUS_OBJECT_PATH_NOT_FOUND;
+     }
+ 
++    DWORD native_access=xbox_access_to_win32(DesiredAccess);
++    int mutation=(native_access&(GENERIC_WRITE|GENERIC_ALL|FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_ATTRIBUTES|DELETE)) ||
++        CreateDisposition!=XBOX_FILE_OPEN;
++    if(mutation&&!xbox_save_mutation_transaction_windows(NULL,win_path))return STATUS_ACCESS_DENIED;
++
+     /* A partition device opened as a directory.
+      *
+      * The path layer maps \Device\Harddisk0\PartitionN to a PartitionN.img
+@@ -171,6 +240,7 @@
+     if ((CreateOptions & XBOX_FILE_DIRECTORY_FILE) &&
+         GetFileAttributesW(win_path) != INVALID_FILE_ATTRIBUTES &&
+         !(GetFileAttributesW(win_path) & FILE_ATTRIBUTE_DIRECTORY)) {
++        if(native_fatx_image_name(win_path))wcscpy(volume_image,win_path);
+         WCHAR *slash = wcsrchr(win_path, L'\\');
+         if (slash && slash != win_path) {
+             *slash = 0;
+@@ -213,6 +283,7 @@
+             IoStatusBlock->Status = STATUS_OBJECT_NAME_NOT_FOUND;
+             IoStatusBlock->Information = 0;
+         }
++        if(mutation)xbox_save_failed_transaction_windows();
+         switch (err) {
+             case ERROR_FILE_NOT_FOUND: return STATUS_OBJECT_NAME_NOT_FOUND;
+             case ERROR_PATH_NOT_FOUND: return STATUS_OBJECT_PATH_NOT_FOUND;
+@@ -222,6 +293,8 @@
+         }
+     }
+ 
++    if(volume_image[0]&&!native_volume_record(h,volume_image)){CloseHandle(h);return STATUS_INSUFFICIENT_RESOURCES;}
++    if(!xbox_save_opened_transaction_windows(h,win_path)){native_volume_drop(h);CloseHandle(h);return STATUS_INSUFFICIENT_RESOURCES;}
+     *FileHandle = h;
+     if (IoStatusBlock) {
+         IoStatusBlock->Status = STATUS_SUCCESS;
+@@ -284,6 +357,7 @@
+     if (!IoStatusBlock)
+         return STATUS_INVALID_PARAMETER;
+ 
++    if(!xbox_save_mutation_transaction_windows(FileHandle,NULL)){IoStatusBlock->Status=STATUS_ACCESS_DENIED;IoStatusBlock->Information=0;return STATUS_ACCESS_DENIED;}
+     if (ByteOffset && ByteOffset->QuadPart >= 0) {
+         memset(&ov, 0, sizeof(ov));
+         ov.Offset = ByteOffset->LowPart;
+@@ -293,13 +367,14 @@
+         result = WriteFile(FileHandle, Buffer, Length, &bytes_written, NULL);
+     }
+ 
+-    if (result) {
++    if (result && bytes_written==Length) {
+         IoStatusBlock->Status = STATUS_SUCCESS;
+         IoStatusBlock->Information = bytes_written;
+         if (Event) SetEvent(Event);
+         return STATUS_SUCCESS;
+     }
+ 
++    xbox_save_failed_transaction_windows();
+     XBOX_TRACE(XBOX_LOG_FILE, "NtWriteFile(handle=%p, len=%u) failed err=%u",
+                FileHandle, Length, GetLastError());
+     IoStatusBlock->Status = STATUS_UNSUCCESSFUL;
+@@ -312,7 +387,9 @@
+     XBOX_TRACE(XBOX_LOG_FILE, "NtClose(handle=%p)", Handle);
+     if (Handle && Handle != INVALID_HANDLE_VALUE) {
+         xbox_dir_context_drop(Handle);
+-        CloseHandle(Handle);
++        if(!CloseHandle(Handle)){xbox_save_failed_transaction_windows();return STATUS_INVALID_HANDLE;}
++        xbox_save_closed_transaction_windows(Handle);
++        native_volume_drop(Handle);
+         return STATUS_SUCCESS;
+     }
+     return STATUS_INVALID_HANDLE;
+@@ -324,8 +401,10 @@
+     if (!translate_obj_path(ObjectAttributes, win_path, MAX_PATH))
+         return STATUS_OBJECT_PATH_NOT_FOUND;
+     XBOX_TRACE(XBOX_LOG_FILE, "NtDeleteFile: %S", win_path);
++    if(!xbox_save_mutation_transaction_windows(NULL,win_path))return STATUS_ACCESS_DENIED;
+     if (DeleteFileW(win_path))    return STATUS_SUCCESS;
+     if (RemoveDirectoryW(win_path)) return STATUS_SUCCESS;
++    xbox_save_failed_transaction_windows();
+     return STATUS_OBJECT_NAME_NOT_FOUND;
+ }
+ 
+@@ -415,6 +494,9 @@
+     if (!IoStatusBlock || !FileInformation)
+         return STATUS_INVALID_PARAMETER;
+ 
++    if(FileInformationClass!=XboxFilePositionInformation && !xbox_save_mutation_transaction_windows(FileHandle,NULL))return STATUS_ACCESS_DENIED;
++    if((FileInformationClass==XboxFilePositionInformation||FileInformationClass==XboxFileEndOfFileInformation||FileInformationClass==XboxFileAllocationInformation) && (Length<sizeof(LARGE_INTEGER)||((LARGE_INTEGER*)FileInformation)->QuadPart<0)){xbox_save_failed_transaction_windows();return STATUS_INVALID_PARAMETER;}
++    if((FileInformationClass==XboxFileDispositionInformation&&Length<sizeof(XBOX_FILE_DISPOSITION_INFORMATION))||(FileInformationClass==XboxFileBasicInformation&&Length<sizeof(XBOX_FILE_BASIC_INFORMATION))){xbox_save_failed_transaction_windows();return STATUS_INVALID_PARAMETER;}
+     switch (FileInformationClass) {
+         case XboxFilePositionInformation: {
+             PXBOX_FILE_POSITION_INFORMATION info = (PXBOX_FILE_POSITION_INFORMATION)FileInformation;
+@@ -422,6 +504,7 @@
+                 xbox_log(XBOX_LOG_WARN, XBOX_LOG_FILE,
+                     "SetFilePosition failed: offset=%lld err=%u",
+                     (long long)info->CurrentByteOffset.QuadPart, GetLastError());
++                xbox_save_failed_transaction_windows();
+                 return STATUS_UNSUCCESSFUL;
+             }
+             IoStatusBlock->Status = STATUS_SUCCESS;
+@@ -430,17 +513,16 @@
+         case XboxFileEndOfFileInformation: {
+             PXBOX_FILE_END_OF_FILE_INFORMATION info = (PXBOX_FILE_END_OF_FILE_INFORMATION)FileInformation;
+             LARGE_INTEGER cur, zero = {0};
+-            SetFilePointerEx(FileHandle, zero, &cur, FILE_CURRENT);
+-            SetFilePointerEx(FileHandle, info->EndOfFile, NULL, FILE_BEGIN);
++            if(!SetFilePointerEx(FileHandle,zero,&cur,FILE_CURRENT)||!SetFilePointerEx(FileHandle,info->EndOfFile,NULL,FILE_BEGIN)){xbox_save_failed_transaction_windows();return STATUS_UNSUCCESSFUL;}
+             if (!SetEndOfFile(FileHandle)) {
+                 xbox_log(XBOX_LOG_WARN, XBOX_LOG_FILE,
+                     "SetEndOfFile failed: size=%lld err=%u",
+                     (long long)info->EndOfFile.QuadPart, GetLastError());
+                 SetFilePointerEx(FileHandle, cur, NULL, FILE_BEGIN);
++                xbox_save_failed_transaction_windows();
+                 return STATUS_UNSUCCESSFUL;
+             }
+-            if (cur.QuadPart <= info->EndOfFile.QuadPart)
+-                SetFilePointerEx(FileHandle, cur, NULL, FILE_BEGIN);
++            if(cur.QuadPart<=info->EndOfFile.QuadPart && !SetFilePointerEx(FileHandle,cur,NULL,FILE_BEGIN)){xbox_save_failed_transaction_windows();return STATUS_UNSUCCESSFUL;}
+             IoStatusBlock->Status = STATUS_SUCCESS;
+             return STATUS_SUCCESS;
+         }
+@@ -461,10 +543,8 @@
+             if (!SetFileInformationByHandle(FileHandle, FileAllocationInfo,
+                                             &fai, sizeof(fai))) {
+                 LARGE_INTEGER cur, zero = {0};
+-                SetFilePointerEx(FileHandle, zero, &cur, FILE_CURRENT);
+-                SetFilePointerEx(FileHandle, info->EndOfFile, NULL, FILE_BEGIN);
+-                SetEndOfFile(FileHandle);
+-                SetFilePointerEx(FileHandle, cur, NULL, FILE_BEGIN);
++                if(!SetFilePointerEx(FileHandle,zero,&cur,FILE_CURRENT)||!SetFilePointerEx(FileHandle,info->EndOfFile,NULL,FILE_BEGIN)){xbox_save_failed_transaction_windows();return STATUS_UNSUCCESSFUL;}
++                if(!SetEndOfFile(FileHandle)||!SetFilePointerEx(FileHandle,cur,NULL,FILE_BEGIN)){xbox_save_failed_transaction_windows();return STATUS_UNSUCCESSFUL;}
+             }
+             IoStatusBlock->Status = STATUS_SUCCESS;
+             return STATUS_SUCCESS;
+@@ -473,9 +553,7 @@
+             PXBOX_FILE_DISPOSITION_INFORMATION info = (PXBOX_FILE_DISPOSITION_INFORMATION)FileInformation;
+             FILE_DISPOSITION_INFO fdi;
+             fdi.DeleteFile = info->DeleteFile;
+-            if (!SetFileInformationByHandle(FileHandle, FileDispositionInfo, &fdi, sizeof(fdi)))
+-                xbox_log(XBOX_LOG_WARN, XBOX_LOG_FILE,
+-                         "SetFileDispositionInfo failed: err=%u", GetLastError());
++            if (!SetFileInformationByHandle(FileHandle, FileDispositionInfo, &fdi, sizeof(fdi))){xbox_save_failed_transaction_windows();return STATUS_UNSUCCESSFUL;}
+             IoStatusBlock->Status = STATUS_SUCCESS;
+             return STATUS_SUCCESS;
+         }
+@@ -488,7 +566,7 @@
+             at.dwHighDateTime = info->LastAccessTime.HighPart;
+             wt.dwLowDateTime = info->LastWriteTime.LowPart;
+             wt.dwHighDateTime = info->LastWriteTime.HighPart;
+-            SetFileTime(FileHandle, &ct, &at, &wt);
++            if(!SetFileTime(FileHandle,&ct,&at,&wt)){xbox_save_failed_transaction_windows();return STATUS_UNSUCCESSFUL;}
+             IoStatusBlock->Status = STATUS_SUCCESS;
+             return STATUS_SUCCESS;
+         }
+@@ -501,6 +579,7 @@
+             fprintf(stderr, "  [FILE] NtSetInformationFile: unhandled class %d\n",
+                     (int)FileInformationClass);
+             fflush(stderr);
++            xbox_save_failed_transaction_windows();
+             return STATUS_NOT_IMPLEMENTED;
+     }
+ }
+@@ -509,15 +588,16 @@
+     HANDLE FileHandle, PXBOX_IO_STATUS_BLOCK IoStatusBlock,
+     PVOID FsInformation, ULONG Length, XBOX_FS_INFORMATION_CLASS FsInformationClass)
+ {
+-    (void)FileHandle; (void)Length;
+     if (!IoStatusBlock || !FsInformation)
+         return STATUS_INVALID_PARAMETER;
+ 
+     switch (FsInformationClass) {
+         case XboxFileFsSizeInformation: {
++            if(Length<sizeof(XBOX_FILE_FS_SIZE_INFORMATION)){IoStatusBlock->Status=(NTSTATUS)0xC0000004u;IoStatusBlock->Information=0;return IoStatusBlock->Status;}
+             PXBOX_FILE_FS_SIZE_INFORMATION info = (PXBOX_FILE_FS_SIZE_INFORMATION)FsInformation;
+-            ULARGE_INTEGER free_bytes, total_bytes, total_free;
+-            if (GetDiskFreeSpaceExW(NULL, &free_bytes, &total_bytes, &total_free)) {
++            ULARGE_INTEGER free_bytes={0}, total_bytes, total_free;
++            BOOL have_space=native_volume_space(FileHandle,&free_bytes,&total_bytes,&total_free);
++            if (have_space) {
+                 info->BytesPerSector = XBOX_BYTES_PER_SECTOR;
+                 info->SectorsPerAllocationUnit = XBOX_SECTORS_PER_CLUSTER;
+                 ULONGLONG cs = (ULONGLONG)info->BytesPerSector * info->SectorsPerAllocationUnit;
+@@ -529,6 +609,14 @@
+                 info->TotalAllocationUnits.QuadPart = 1048576;
+                 info->AvailableAllocationUnits.QuadPart = 524288;
+             }
++            unsigned sectors;uint64_t bytes;
++            if(native_fatx_geometry(FileHandle,&sectors,&bytes)){
++                uint64_t cluster=(uint64_t)sectors*XBOX_BYTES_PER_SECTOR;
++                info->SectorsPerAllocationUnit=sectors;
++                info->TotalAllocationUnits.QuadPart=(LONGLONG)(bytes/cluster);
++                uint64_t available=have_space?(uint64_t)free_bytes.QuadPart/cluster:bytes/cluster;
++                info->AvailableAllocationUnits.QuadPart=(LONGLONG)(available<bytes/cluster?available:bytes/cluster);
++            }
+             IoStatusBlock->Status = STATUS_SUCCESS;
+             IoStatusBlock->Information = sizeof(XBOX_FILE_FS_SIZE_INFORMATION);
+             return STATUS_SUCCESS;
+@@ -542,7 +630,7 @@
+ 
+ NTSTATUS __stdcall xbox_NtFlushBuffersFile(HANDLE FileHandle, PXBOX_IO_STATUS_BLOCK IoStatusBlock)
+ {
+-    FlushFileBuffers(FileHandle);
++    if(!FlushFileBuffers(FileHandle)){xbox_save_failed_transaction_windows();if(IoStatusBlock){IoStatusBlock->Status=STATUS_UNSUCCESSFUL;IoStatusBlock->Information=0;}return STATUS_UNSUCCESSFUL;}
+     if (IoStatusBlock) {
+         IoStatusBlock->Status = STATUS_SUCCESS;
+         IoStatusBlock->Information = 0;

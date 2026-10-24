@@ -1,0 +1,11 @@
+{
+  "boot": "default.xbe",
+  "menu": "TopSpin(Menu).xbe",
+  "game": "TopSpin(Game).xbe",
+  "career": "TopSpin(Career).xbe",
+  "training": "TopSpin(Training).xbe",
+  "playercreator": "TopSpin(PlayerCreator).xbe",
+  "shop": "TopSpin(Shop).xbe",
+  "online": "TopSpin(Online).xbe",
+  "stop": "TopSpin(Stop).xbe"
+}

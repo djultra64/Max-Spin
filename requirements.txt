@@ -1,0 +1,2 @@
+pyxbe==1.0.4
+capstone==5.0.9

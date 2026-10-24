@@ -1,0 +1,238 @@
+--- a/src/d3d/CMakeLists.txt
++++ b/src/d3d/CMakeLists.txt
+@@ -1,8 +1,14 @@
+ # Xbox D3D8 Compatibility Layer
+-#   _WIN32 -> backed by Direct3D 11 (d3d8_*.c, d3d8_combiners.c, d3d8_vsh.c)
+-#   POSIX  -> backed by OpenGL 3.3 core via SDL2 + libepoxy (d3d8_gl.c)
++# Backend selection is independent of the host OS. djultra64.
++# Preserve the historical defaults: D3D11 on Windows, Vulkan on POSIX.
++if(WIN32)
++    set(XBOXRECOMP_VULKAN_DEFAULT OFF)
++else()
++    set(XBOXRECOMP_VULKAN_DEFAULT ON)
++endif()
++option(XBOXRECOMP_VULKAN "Build the Vulkan Direct3D 8 device" ${XBOXRECOMP_VULKAN_DEFAULT})
+ 
+-if(WIN32)
++if(WIN32 AND NOT XBOXRECOMP_VULKAN)
+     add_library(xbox_d3d8 STATIC
+         d3d8_device.c
+         d3d8_formats.c
+@@ -22,8 +28,8 @@
+     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../../tests/d3d8_smoke
+                      ${CMAKE_CURRENT_BINARY_DIR}/d3d8_smoke)
+ else()
+-    # Off Windows the device is Vulkan (MoltenVK on macOS) when the Vulkan
+-    # loader and shaderc are installed, and the older OpenGL one otherwise.
++    # Explicit Vulkan also supports Windows (native Win32 surface callback).
++    # POSIX retains its historical OpenGL fallback when dependencies are absent.
+     # Only the Vulkan device draws what the push-buffer executor asks for.
+     find_package(Vulkan QUIET)
+     find_package(PkgConfig QUIET)
+@@ -43,7 +49,6 @@
+         pkg_check_modules(SHADERC QUIET IMPORTED_TARGET shaderc)
+         set(XBOX_SHADERC_TARGET PkgConfig::SHADERC)
+     endif()
+-    option(XBOXRECOMP_VULKAN "Build the Vulkan Direct3D 8 device" ON)
+     if(XBOXRECOMP_VULKAN AND Vulkan_FOUND AND SHADERC_FOUND)
+         add_library(xbox_d3d8 STATIC
+             d3d8_vk.c
+@@ -67,6 +72,9 @@
+         target_include_directories(xbox_d3d8 PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../kernel)
+         target_include_directories(xbox_kernel PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+         message(STATUS "xbox_d3d8: Vulkan device (shaderc ${SHADERC_VERSION})")
++    elseif(WIN32 AND XBOXRECOMP_VULKAN)
++        message(FATAL_ERROR "Windows Vulkan requested: the Vulkan loader and shaderc are required; "
++                            "refusing a silent D3D11/OpenGL fallback.")
+     elseif(XBOXRECOMP_SDL3)
+         message(FATAL_ERROR "XBOXRECOMP_SDL3 off Windows needs the Vulkan device "
+                             "(the Vulkan loader and shaderc); the OpenGL one is built on SDL2.")
+--- a/src/d3d/d3d8_combiners.c
++++ b/src/d3d/d3d8_combiners.c
+@@ -32,18 +32,18 @@
+  *    and binds everything to the D3D11 pipeline.
+  */
+ 
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ #include "d3d8_internal.h"
+ #endif
+ #include "d3d8_combiners.h"
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ #include <d3dcompiler.h>
+ #endif
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdio.h>
+ 
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ #pragma comment(lib, "d3dcompiler.lib")
+ #endif
+ 
+@@ -66,7 +66,7 @@
+ /** Dirty flag - set when any PS render state changes. */
+ static BOOL g_dirty = TRUE;
+ 
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ /** PS constant buffer (uploaded to GPU each draw). */
+ static ID3D11Buffer *g_combiner_cb = NULL;
+ 
+@@ -91,7 +91,7 @@
+ 
+ static CombinerCacheEntry g_cache[COMBINER_CACHE_SIZE];
+ static uint32_t g_frame_counter = 0;
+-#endif /* _WIN32 */
++#endif /* Windows D3D11 backend */
+ 
+ /* ================================================================
+  * Hashing
+@@ -935,7 +935,7 @@
+ 
+ #undef EMIT
+ 
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ /* ================================================================
+  * Shader Compilation & Cache
+  * ================================================================ */
+@@ -1119,7 +1119,7 @@
+     fprintf(stderr, "NV2A combiners: Shut down\n");
+ }
+ 
+-#endif /* _WIN32 */
++#endif /* Windows D3D11 backend */
+ 
+ /* ================================================================
+  * Draw Integration
+@@ -1303,7 +1303,7 @@
+     return g_nv2a_mode ? &g_combiner_state : NULL;
+ }
+ 
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ BOOL d3d8_combiners_prepare_draw(void)
+ {
+     ID3D11DeviceContext *ctx;
+@@ -1383,7 +1383,7 @@
+ 
+     return TRUE;
+ }
+-#endif /* _WIN32 */
++#endif /* Windows D3D11 backend */
+ 
+ void d3d8_combiners_set_fog(BOOL enabled,DWORD mode,DWORD argb,float bias,float multiplier) {
+  s_fog.known=TRUE;s_fog.enabled=enabled;s_fog.mode=mode;s_fog.color=argb;s_fog.bias=bias;s_fog.multiplier=multiplier;
+--- a/src/d3d/d3d8_combiners.h
++++ b/src/d3d/d3d8_combiners.h
+@@ -41,7 +41,7 @@
+ #define XBOXRECOMP_D3D8_COMBINERS_H
+ 
+ #include <stdint.h>
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ #include <d3d11.h>
+ #include <windows.h>
+ #else
+@@ -330,7 +330,7 @@
+ int d3d8_combiners_generate_hlsl(const NV2ACombinerState *state,
+                                  char *buf, int bufsize);
+ 
+-#if defined(_WIN32)
++#if defined(_WIN32) && !defined(XBOXRECOMP_HAVE_VULKAN)
+ /**
+  * Get or create a compiled pixel shader for the given combiner state.
+  *
+--- a/src/nv2a/nv2a_pgraph_d3d11.c
++++ b/src/nv2a/nv2a_pgraph_d3d11.c
+@@ -12,7 +12,7 @@
+  */
+ 
+ #include "nv2a_pgraph_d3d11.h"
+-#if !defined(_WIN32) && defined(XBOXRECOMP_HAVE_VULKAN)
++#if defined(XBOXRECOMP_HAVE_VULKAN)
+ #include "d3d/d3d8_sprite_xbr.h"
+ static PgraphUiTextureAdmissionCallback s_ui_texture_admission;
+ void pgraph_d3d11_set_ui_texture_admission_callback(PgraphUiTextureAdmissionCallback callback){s_ui_texture_admission=callback;}
+@@ -241,7 +241,7 @@
+     float x, y, z, rhw;
+     uint32_t color;
+     float u, v;
+-#ifndef _WIN32
++#if !defined(_WIN32) || defined(XBOXRECOMP_HAVE_VULKAN)
+     float fog;
+ #endif
+ } OutputVertex;
+@@ -425,7 +425,7 @@
+     /* Convert inline vertices to OutputVertex (28 bytes) */
+     OutputVertex *out = (OutputVertex *)_alloca(out_vert_count * sizeof(OutputVertex));
+     memset(out,0,out_vert_count*sizeof *out);
+-#ifndef _WIN32
++#if !defined(_WIN32) || defined(XBOXRECOMP_HAVE_VULKAN)
+     /* This legacy opt-in 2D format has no fog coordinate. Preserve its
+      * previous unfogged result, rather than inventing a zero factor. */
+     for(uint32_t i=0;i<out_vert_count;i++)out[i].fog=1.f;
+@@ -1413,7 +1413,7 @@
+     }
+ 
+     g_bound_mip_levels[g_bind_stage]=levels;
+-#if !defined(_WIN32) && defined(XBOXRECOMP_HAVE_VULKAN)
++#if defined(XBOXRECOMP_HAVE_VULKAN)
+     uint32_t ui_profile=levels==1&&s_ui_texture_admission?s_ui_texture_admission(guest_addr,nv2a_format,width,height,levels,data,bytes):0;
+     d3d8_vk_sprite_texture_admit(tex,ui_profile,ui_uploaded_now);
+ #endif
+@@ -1866,7 +1866,7 @@
+                     o->z = v->z * zscale;
+                     o->z = o->z < 0.0f ? 0.0f : o->z > 1.0f ? 1.0f : o->z;
+                     o->color = v->color; o->u = v->u; o->v = v->v;
+-#ifndef _WIN32
++#if !defined(_WIN32) || defined(XBOXRECOMP_HAVE_VULKAN)
+                     o->fog = v->fog;
+ #endif
+                 }
+@@ -1884,7 +1884,7 @@
+             out[i].z = out[i].z < 0.0f ? 0.0f : out[i].z > 1.0f ? 1.0f : out[i].z;
+             out[i].rhw = 1.0f;
+             out[i].color = verts[i].color;
+-#ifndef _WIN32
++#if !defined(_WIN32) || defined(XBOXRECOMP_HAVE_VULKAN)
+             out[i].fog = verts[i].fog;
+ #endif
+             out[i].u = verts[i].u; out[i].v = verts[i].v;
+--- a/src/nv2a/nv2a_pgraph_d3d11.h
++++ b/src/nv2a/nv2a_pgraph_d3d11.h
+@@ -217,7 +217,7 @@
+ 
+ void pgraph_d3d11_set_fog(uint32_t enabled,uint32_t mode,uint32_t raw_abgr,float bias,float multiplier);
+ 
+-#if !defined(_WIN32) && defined(XBOXRECOMP_HAVE_VULKAN)
++#if defined(XBOXRECOMP_HAVE_VULKAN)
+ typedef uint32_t(*PgraphUiTextureAdmissionCallback)(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,const void*,size_t);
+ void pgraph_d3d11_set_ui_texture_admission_callback(PgraphUiTextureAdmissionCallback);
+ #endif
+--- a/src/d3d/d3d8_vk.c
++++ b/src/d3d/d3d8_vk.c
+@@ -47,7 +47,7 @@
+ #include "d3d8_vk_cache.h"
+ #include "d3d8_vk_rt.h"
+ #include "visual_scene_wsi.h"
+-#include "win32_compat.h"   /* GetTickCount64 */
++#include "platform/win32_compat.h"   /* GetTickCount64; native Win32 uses windows.h. */
+ 
+ #include <vulkan/vulkan.h>
+ #include "sprite_xbr_vk.h"
+@@ -3970,10 +3970,10 @@
+         D3DFORMAT fmt, D3DPOOL pool, IDirect3DIndexBuffer8 **pp)
+ { (void)s; (void)len; (void)usage; (void)fmt; (void)pool; if (pp) *pp = NULL; return D3DERR_INVALIDCALL; }
+ static HRESULT __stdcall dev_CreateRenderTarget(IDirect3DDevice8 *s, UINT w, UINT h,
+-        D3DFORMAT fmt, DWORD ms, BOOL lockable, IDirect3DSurface8 **pp)
++        D3DFORMAT fmt, D3DMULTISAMPLE_TYPE ms, BOOL lockable, IDirect3DSurface8 **pp)
+ { (void)s; (void)w; (void)h; (void)fmt; (void)ms; (void)lockable; if (pp) *pp = NULL; return D3DERR_INVALIDCALL; }
+ static HRESULT __stdcall dev_CreateDepthStencilSurface(IDirect3DDevice8 *s, UINT w, UINT h,
+-        D3DFORMAT fmt, DWORD ms, IDirect3DSurface8 **pp)
++        D3DFORMAT fmt, D3DMULTISAMPLE_TYPE ms, IDirect3DSurface8 **pp)
+ { (void)s; (void)w; (void)h; (void)fmt; (void)ms; if (pp) *pp = NULL; return D3DERR_INVALIDCALL; }
+ static HRESULT __stdcall dev_SetRenderTarget(IDirect3DDevice8 *s, IDirect3DSurface8 *rt, IDirect3DSurface8 *ds)
+ { (void)s; (void)rt; (void)ds; return D3D_OK; }

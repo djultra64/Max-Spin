@@ -1,0 +1,21 @@
+/* Generated from original selector bodies. Own work: djultra64. */
+#ifndef TOPSPIN_SELECTOR_VIDEO_PROFILES_H
+#define TOPSPIN_SELECTOR_VIDEO_PROFILES_H
+#if TOPSPIN_SELECTOR_VIDEO_PROFILE == 1 /* training */
+#define TOPSPIN_SELECTOR_RECORD8 0x0025cc78u
+#define TOPSPIN_SELECTOR_RETURN 0x00041ea2u
+#define TOPSPIN_SELECTOR_CAMERA 0x004054ccu
+#define TOPSPIN_SELECTOR_LABEL "TRAINING"
+#define TOPSPIN_SELECTOR_REAL __real_sub_00062550
+#define TOPSPIN_SELECTOR_WRAP __wrap_sub_00062550
+#elif TOPSPIN_SELECTOR_VIDEO_PROFILE == 2 /* online */
+#define TOPSPIN_SELECTOR_RECORD8 0x0041a068u
+#define TOPSPIN_SELECTOR_RETURN 0x001e8312u
+#define TOPSPIN_SELECTOR_CAMERA 0x0042fee4u
+#define TOPSPIN_SELECTOR_LABEL "ONLINE"
+#define TOPSPIN_SELECTOR_REAL __real_sub_000D7E90
+#define TOPSPIN_SELECTOR_WRAP __wrap_sub_000D7E90
+#else
+#error "Explicit Training or Online selector profile required"
+#endif
+#endif

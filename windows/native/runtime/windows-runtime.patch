@@ -1,0 +1,348 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -573,29 +573,22 @@
+  * Logical CPU 2 when the process may use it: clear of CPU 0, where Windows
+  * does much of its own work, and on the hybrid parts this was measured on the
+  * low numbers are the performance cores. RECOMP_GUEST_CORES=all turns it off. */
++#if defined(_WIN32)
++#include "guest_thread_windows.h"
++#define bridge_CreateGuestThread guest_turn_CreateGuestThread
++#define bridge_SuspendGuestThread guest_turn_SuspendGuestThread
++#define bridge_ResumeGuestThread guest_turn_ResumeGuestThread
++#else
++#define bridge_CreateGuestThread CreateThread
++#define bridge_SuspendGuestThread SuspendThread
++#define bridge_ResumeGuestThread ResumeThread
++#endif
+ void xbox_PinToGuestCore(void)
+ {
+ #if defined(_WIN32)
+-    static DWORD_PTR mask;
+-    static volatile LONG init;
+-
+-    if (InterlockedCompareExchange(&init, 1, 0) == 0) {
+-        const char *s = getenv("RECOMP_GUEST_CORES");
+-        DWORD_PTR proc = 0, sys = 0;
+-        if (!(s && !strcmp(s, "all"))
+-                && GetProcessAffinityMask(GetCurrentProcess(), &proc, &sys) && proc) {
+-            mask = (proc & ((DWORD_PTR)1 << 2)) ? ((DWORD_PTR)1 << 2)
+-                                                : (proc & (~proc + 1));   /* lowest */
+-            fprintf(stderr, "  [KERNEL] guest threads share host CPU mask 0x%llX"
+-                            " (RECOMP_GUEST_CORES=all to spread them)\n",
+-                    (unsigned long long)mask);
+-        }
+-        InterlockedExchange(&init, 2);
+-    }
+-    while (init != 2)
+-        YieldProcessor();
+-    if (mask)
+-        SetThreadAffinityMask(GetCurrentThread(), mask);
++    /* Native guest exclusion, virtual CLI/STI and blocking waits share the
++     * same token. Host affinity alone cannot preserve that contract. */
++    guest_turn_join();
+ #elif defined(__linux__)
+     /* The same rule through the scheduler: every guest thread on one CPU the
+      * process is allowed to use, CPU 2 when it is one of them. */
+@@ -698,7 +691,7 @@
+ }
+ 
+ static HANDLE bridge_spawn_thread(recomp_func_t fn, uint32_t ctx1,
+-                                  uint32_t ctx2, uint32_t stack_top)
++                                  uint32_t ctx2, uint32_t stack_top, int suspended)
+ {
+     struct bridge_thread_start *s = malloc(sizeof(*s));
+     HANDLE th;
+@@ -706,7 +699,12 @@
+     if (!s) return NULL;
+     s->fn = fn; s->ctx1 = ctx1; s->ctx2 = ctx2; s->stack_top = stack_top;
+ 
++#if defined(_WIN32)
++    th = bridge_CreateGuestThread(NULL,0,bridge_thread_main,s,suspended?CREATE_SUSPENDED:0,NULL);
++#else
++    (void)suspended;
+     th = CreateThread(NULL, 0, bridge_thread_main, s, 0, NULL);
++#endif
+     if (!th) free(s);
+     /* Record the game thread so a host-tick-driven title's watchdog can sample
+      * it via xbox_thread_debug_handle. Harmless for default-model titles: they
+@@ -740,6 +738,9 @@
+      * so the entry can return. In INLINE mode the first call runs the game. */
+     int is_first_call = (g_thread_mode == XBOX_THREAD_MODE_INLINE)
+                         && (g_thread_call_count == 0);
++#if defined(_WIN32)
++    if(STACK_ARG(7))is_first_call=0; /* Suspended births need a real handle. */
++#endif
+     g_thread_call_count++;
+ 
+     fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx #%d: routine=0x%08X ctx1=0x%08X ctx2=0x%08X\n",
+@@ -817,7 +818,7 @@
+                     bridge_run_thread_inline(fn, start_context1, start_context2);
+                 } else {
+                     HANDLE th = bridge_spawn_thread(fn, start_context1,
+-                                                    start_context2, stack_top);
++                                                    start_context2, stack_top, (int)STACK_ARG(7));
+                     fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx: spawned "
+                             "worker 0x%08X (ctx=0x%08X, stack top 0x%08X)\n",
+                             start_routine, start_context1, stack_top);
+@@ -3374,7 +3375,7 @@
+         InitializeCriticalSection(&g_timer_lock);
+         g_timer_started = 1;
+         g_timer_wake = CreateEventA(NULL, FALSE, FALSE, NULL);
+-        CloseHandle(CreateThread(NULL, 0, kernel_timer_thread, NULL, 0, NULL));
++        CloseHandle(bridge_CreateGuestThread(NULL,0,kernel_timer_thread,NULL,0,NULL));
+     }
+ 
+     EnterCriticalSection(&g_timer_lock);
+@@ -7029,7 +7030,11 @@
+ {
+     CRITICAL_SECTION *cs = bridge_try_cs_shadow(STACK_ARG(0));
+     if (!cs) { g_eax = 0; return; }
++#if defined(_WIN32)
++    g_eax = guest_turn_GuestTryEnterCriticalSection(cs) ? 1 : 0;
++#else
+     g_eax = TryEnterCriticalSection(cs) ? 1 : 0;
++#endif
+ }
+ 
+ /* ── Rtl Misc stubs (ordinals 288, 297, 319, 321) ─────────── */
+@@ -8214,7 +8219,7 @@
+         hThread = XBOX_TO_NATIVE(STACK_ARG(0));
+ 
+     if (hThread)
+-        g_eax = (uint32_t)ResumeThread(hThread);
++        g_eax = (uint32_t)bridge_ResumeGuestThread(hThread);
+     else
+         g_eax = 0;
+ }
+@@ -8227,7 +8232,7 @@
+         hThread = XBOX_TO_NATIVE(STACK_ARG(0));
+ 
+     if (hThread)
+-        g_eax = (uint32_t)SuspendThread(hThread);
++        g_eax = (uint32_t)bridge_SuspendGuestThread(hThread);
+     else
+         g_eax = 0;
+ }
+@@ -8920,7 +8925,7 @@
+                     bridge_run_thread_inline(fn, start_context1, start_context2);
+                 } else {
+                     HANDLE th = bridge_spawn_thread(fn, start_context1,
+-                                                    start_context2, stack_top);
++                                                    start_context2, stack_top, 0);
+                     if (xbox_handle_ptr && th)
+                         bridge_write_handle(xbox_handle_ptr, th);
+                 }
+@@ -10468,6 +10473,11 @@
+ 
+ static int guest_cpu_enabled(void)
+ {
++#if defined(_WIN32)
++    /* The native turn token is always active; do not layer the optional old
++     * guest lock over it, which would invert the two ownership protocols. */
++    return 0;
++#endif
+     if (g_guest_cpu_on < 0) {
+         const char *e = getenv("RECOMP_GUEST_LOCK");
+         InitializeCriticalSection(&g_guest_cpu);
+@@ -10804,9 +10814,7 @@
+         fprintf(stderr, "  [KERNEL] → returned 0x%08X\n", g_eax);
+         fflush(stderr);
+     }
+-#if !defined(_WIN32)
+     guest_turn_checkpoint();   /* back to the title: let a waiting thread in */
+-#endif
+ }
+ 
+ /* ── Dispatch lookup ────────────────────────────────────── */
+--- a/src/kernel/kernel_rtl.c
++++ b/src/kernel/kernel_rtl.c
+@@ -470,6 +470,16 @@
+     }
+ }
+ 
++/* Guest mutex ownership must not suppress virtual CPU checkpoints. */
++#if defined(_WIN32)
++#define xbox_guest_TryEnterCriticalSection guest_turn_GuestTryEnterCriticalSection
++#define xbox_guest_EnterCriticalSection guest_turn_GuestEnterCriticalSection
++#define xbox_guest_LeaveCriticalSection guest_turn_GuestLeaveCriticalSection
++#else
++#define xbox_guest_TryEnterCriticalSection TryEnterCriticalSection
++#define xbox_guest_EnterCriticalSection EnterCriticalSection
++#define xbox_guest_LeaveCriticalSection LeaveCriticalSection
++#endif
+ VOID __stdcall xbox_RtlEnterCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
+ {
+     CRITICAL_SECTION* cs = xbox_cs_shadow(CriticalSection);
+@@ -477,7 +487,7 @@
+         return;
+     InterlockedIncrement(&g_cs_enters);
+     crt_lock_trace("take", CriticalSection);
+-    if (TryEnterCriticalSection(cs)) {
++    if (xbox_guest_TryEnterCriticalSection(cs)) {
+         xbox_cs_note_owner(cs);
+         return;
+     }
+@@ -510,7 +520,7 @@
+         xbox_guest_backtrace(10);
+         fflush(stderr);
+     }
+-    EnterCriticalSection(cs);
++    xbox_guest_EnterCriticalSection(cs);
+     xbox_cs_note_owner(cs);
+     if (g_cs_contention_reports <= 16) {
+         fprintf(stderr, "  [CS] thread %lu acquired 0x%08X\n",
+@@ -528,7 +538,7 @@
+         InterlockedIncrement(&g_cs_leaves);
+         crt_lock_trace("drop", CriticalSection);
+         xbox_cs_clear_owner(cs);
+-        LeaveCriticalSection(cs);
++        xbox_guest_LeaveCriticalSection(cs);
+     }
+ }
+ 
+--- a/src/kernel/kernel_thread.c
++++ b/src/kernel/kernel_thread.c
+@@ -12,6 +12,16 @@
+  */
+ 
+ #include "kernel.h"
++#if defined(_WIN32)
++#include "guest_thread_windows.h"
++#define xbox_CreateGuestThread guest_turn_CreateGuestThread
++#define xbox_SuspendGuestThread guest_turn_SuspendGuestThread
++#define xbox_ResumeGuestThread guest_turn_ResumeGuestThread
++#else
++#define xbox_CreateGuestThread CreateThread
++#define xbox_SuspendGuestThread SuspendThread
++#define xbox_ResumeGuestThread ResumeThread
++#endif
+ #include "xbox_memory_layout.h"   /* XBOX_WORKER_STACK_* + worker-stack decls */
+ 
+ /* ============================================================================
+@@ -106,7 +116,7 @@
+     if (KernelStackSize == 0)
+         KernelStackSize = 65536;
+ 
+-    hThread = CreateThread(NULL, KernelStackSize, xbox_thread_wrapper, info,
++    hThread = xbox_CreateGuestThread(NULL, KernelStackSize, xbox_thread_wrapper, info,
+                            dwCreationFlags, &dwThreadId);
+     if (!hThread) {
+         HeapFree(GetProcessHeap(), 0, info);
+@@ -357,7 +367,7 @@
+      * the two are not interchangeable: -1 must become an error status rather
+      * than a suspend count of 0xFFFFFFFF.
+      */
+-    prev = SuspendThread(ThreadHandle);
++    prev = xbox_SuspendGuestThread(ThreadHandle);
+     if (prev == (DWORD)-1) {
+         xbox_log(XBOX_LOG_ERROR, XBOX_LOG_THREAD,
+             "NtSuspendThread: SuspendThread failed (error %u)", GetLastError());
+@@ -380,7 +390,7 @@
+     DWORD prev;
+ 
+     /* Mirror of NtSuspendThread: (DWORD)-1 is failure, not a count. */
+-    prev = ResumeThread(ThreadHandle);
++    prev = xbox_ResumeGuestThread(ThreadHandle);
+     if (prev == (DWORD)-1) {
+         xbox_log(XBOX_LOG_ERROR, XBOX_LOG_THREAD,
+             "NtResumeThread: ResumeThread failed (error %u)", GetLastError());
+--- a/src/kernel/nv2a_executor_job.c
++++ b/src/kernel/nv2a_executor_job.c
+@@ -4,7 +4,8 @@
+ #include "resource_epoch_api.h"
+ #if defined(_WIN32)
+ #include <windows.h>
+-#define JOB_TLS __declspec(thread)
++#include "../platform/xbox_winnt.h"
++#define JOB_TLS XBOX_THREAD_LOCAL
+ #else
+ #include "../platform/win32_compat.h"
+ #include <pthread.h>
+@@ -31,18 +32,10 @@
+ static BOOL WINAPI init(PINIT_ONCE o,PVOID p,PVOID*c){(void)o;(void)p;(void)c;InitializeCriticalSection(&lock);InitializeConditionVariable(&changed);return TRUE;}
+ static void release_job(Job*j){if(!--j->refs){live_bytes-=j->allocated;free(j);}}
+ static int leave_guest(void){
+-#if !defined(_WIN32)
+  return guest_turn_leave();
+-#else
+- return 0;
+-#endif
+ }
+ static void return_guest(int left){
+-#if !defined(_WIN32)
+  guest_turn_return(left);
+-#else
+- (void)left;
+-#endif
+ }
+ int nv2a_executor_is_owner(void){return owner_epoch!=0;}
+ int nv2a_executor_jobs_start(void){
+@@ -65,13 +58,7 @@
+  if(owner_epoch||in_callback)return NV2A_EXECUTOR_REENTRANT;
+  if(!atomic_load_explicit(&enabled,memory_order_acquire))return NV2A_EXECUTOR_DISABLED;
+  if(!work||!input||!output||!in||in>NV2A_EXECUTOR_INPUT_MAX||!out||out>NV2A_EXECUTOR_OUTPUT_MAX||!timeout||timeout>10000u||!xbox_IrqlPreemptible())return NV2A_EXECUTOR_INVALID;
+-#if !defined(_WIN32)
+  if(!guest_turn_interrupts_enabled())return NV2A_EXECUTOR_INVALID;
+-#else
+- /* The optional legacy Windows guest lock has no public suspend/resume API.
+-  * Fail closed rather than blocking while holding that guest lock. */
+- {const char*g=getenv("RECOMP_GUEST_LOCK");if(g&&*g=='1')return NV2A_EXECUTOR_INVALID;}
+-#endif
+  /* Drop the guest token BEFORE acquiring any job/condition mutex, and regain
+   * it only AFTER release. SleepConditionVariableCS otherwise reacquires a
+   * mutex before gc_unblock, inverting it against another guest invoker. */
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -51,7 +51,7 @@
+ #include "nv2a_pb_point_capture.h"
+ #if defined(_WIN32)
+ #include <windows.h>
+-#define NV_TLS __declspec(thread)
++#define NV_TLS XBOX_THREAD_LOCAL
+ #else
+ #define NV_TLS __thread
+ #endif
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -95,12 +95,7 @@
+     guest_turn_return(left);
+     return changed;
+ }
+-#else
+-/* Windows keeps its existing scheduler path pending a separately tested port. */
+-uint64_t xbox_Nv2aProgressEpoch(void) {return 0;}
+-void xbox_Nv2aProgressNotify(void) {}
+-int xbox_Nv2aWaitProgress(uint64_t observed,DWORD timeout_ms)
+-{(void)observed;(void)timeout_ms;return -2;}
++
+ #endif
+ 
+ /* XBE header field offsets (per xboxdevwiki.net/Xbe) */
+--- a/src/platform/CMakeLists.txt
++++ b/src/platform/CMakeLists.txt
+@@ -21,8 +21,13 @@
+ get_filename_component(XBOXRECOMP_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+ 
+ if(WIN32)
+-    add_library(platform INTERFACE)
+-    target_include_directories(platform INTERFACE ${XBOXRECOMP_SRC_DIR})
++    if(NOT MAXSPIN_WINDOWS_RUNTIME_DIR)
++        message(FATAL_ERROR "MAXSPIN_WINDOWS_RUNTIME_DIR must select the native guest CPU runtime")
++    endif()
++    add_library(platform STATIC
++        "${MAXSPIN_WINDOWS_RUNTIME_DIR}/guest_turn_windows.c"
++        "${MAXSPIN_WINDOWS_RUNTIME_DIR}/nv2a_progress_windows.c")
++    target_include_directories(platform PUBLIC ${XBOXRECOMP_SRC_DIR} "${MAXSPIN_WINDOWS_RUNTIME_DIR}")
+ else()
+     add_library(platform STATIC win32_compat.c mmio_trap.c scheduler_observer.c)
+     target_include_directories(platform PUBLIC
+--- a/src/platform/xbox_winnt.h
++++ b/src/platform/xbox_winnt.h
+@@ -71,6 +71,7 @@
+ #define NOMINMAX
+ #endif
+ #include <windows.h>
++#include "guest_turn_windows.h"
+ 
+ /* Wide-string helpers: map to the real CRT functions on Windows. */
+ #define xbox_wcslen  wcslen
