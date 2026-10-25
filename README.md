@@ -1,25 +1,39 @@
 # Max Spin
 
-Max Spin is an experimental native PC recompilation project for the original Xbox version of **Top Spin**, maintained by **djultra64**. It combines locally generated game code with an open source compatibility runtime and PC controls and graphics integration.
+**Top Spin for PC, rebuilt from the original Xbox game.** Max Spin is a native recompilation for **Windows and Linux**, maintained by **djultra64**, with modern graphics options and controls adapted to today's controllers.
 
-**You must supply your own extracted game files.** This source tree excludes the original Xbox executable images, game assets, saves, and game-derived generated C. Native release packages include compiled game modules and still require your own extracted game files; the project license does not license the underlying game code.
+[![Max Spin Linux build — Exhibition court at 3840 × 2160](docs/images/max-spin-linux-4k.png)](docs/images/max-spin-linux-4k.png)
 
-**Experimental preview.** Linux and Windows use SDL3 and Vulkan. Native Windows testing has exercised the original Menu → Exhibition → Game flow, including a serve. See [Windows status](docs/windows.md) for the scope of that validation. The default is a **60 FPS host cap**; sustained 60 FPS across all scenes and validated 120 FPS gameplay are not promised. Online play is not validated.
+*Captured from our Linux build at 3840 × 2160. Click the image for full resolution.*
 
-On the current Linux build, loading an existing Career has been exercised. Some appearance variants can still have black materials or incomplete clothing previews. New-save behavior on this build, complete Career progression, every appearance variant, and visual recovery after a failed save remain under test. Graphics, mode transitions, input devices, and save compatibility can still have defects.
+## Features
+
+- **Native Windows and Linux builds** using SDL3 and Vulkan.
+- **4K rendering and 16:9 widescreen**, including full-width loading artwork and corrected menu spacing.
+- **60 FPS frame cap by default.**
+- **Antialiasing and sprite filtering**, with Original, Super-xBR 2x and Super-xBR 4x options for supported 2D sprites.
+- **Xbox, PlayStation and Nintendo Switch glyphs**, selected automatically from the active controller, with a manual family selector.
+- **Controls mapped by action and physical position**, including Nintendo's A/B and X/Y layout, keyboard support and optional action remapping.
+- **In-game Graphics Options** for resolution, antialiasing, sprite filtering, display mode and controller prompts.
+- **Windowed and fullscreen output**, with a persistent game window and shared preferences across mode transitions.
+- **Separate save and graphics settings folders**, keeping personal progress independent of display preferences.
 
 ## Getting started
 
-For a native package, follow [Using a prebuilt preview](docs/install.md): supply the original game files, prepare local resources once with Python 3, and start the launcher.
+1. Download the package for your platform from [Releases](https://github.com/djultra64/Max-Spin/releases/latest).
+2. Supply your own extracted Top Spin game files and prepare the local resources with Python 3, following the [installation guide](docs/install.md).
+3. Start **MaxSpin.exe** on Windows or **MaxSpin.sh** on Linux.
 
-To compile the project yourself, use the [source build instructions](docs/build.md). See [controls](docs/controls.md) and [graphics settings](docs/graphics.md) for configuration.
+See [controls](docs/controls.md), [graphics settings](docs/graphics.md) and [troubleshooting](docs/troubleshooting.md) for setup details. To compile the project yourself, follow the [source build instructions](docs/build.md).
 
-See [troubleshooting](docs/troubleshooting.md) when a build or launch fails. When reporting an issue, describe the game mode, the last action before the failure, and the settings needed to reproduce it. Share a small, redacted log excerpt rather than original game files or saves.
+## Bringing the Xbox game to PC
+
+The original game ties its menus, graphics and transitions to Xbox hardware. Max Spin recompiles the game code and connects it to a native PC runtime, adapting rendering, input and window management along the way.
+
+That work includes keeping one window across game modes, matching button prompts to each controller's actual layout, repositioning menu footers and stretching the loading artwork to 16:9 while preserving the ball's alignment. Prepared local resources carry these interface changes while keeping the original game files intact. More about the [UI and loading improvements](docs/ui-layout-20261025.md).
 
 ## Credits and licensing
 
 Max Spin integration and project work: **djultra64**. The original game remains the work of its respective creators and rights holders. This independent project is not affiliated with or endorsed by them.
 
-Original project code is available under the [MIT license](LICENSE). Bundled dependencies have their own licenses, including LGPL components; see [third-party notices](THIRD_PARTY.md). AI assistance is described in [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
-
-UI corrections: [footer spacing and loading transitions](docs/ui-layout-20261025.md). The Windows implementation is included in the v0.1.1 preview.
+Original project code is available under the [MIT license](LICENSE). Bundled dependencies retain their own licenses; see [third-party notices](THIRD_PARTY.md). The project license does not cover the original game. AI assistance is described in [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
