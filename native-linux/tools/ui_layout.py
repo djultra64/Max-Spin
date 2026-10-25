@@ -159,7 +159,7 @@ def select_assets(assets,cache):
    else:expected=item
    if not leaf.is_symlink()or leaf.resolve()!=expected.resolve():raise ValueError('UI view link changed: '+relative)
  validate(assets,cache/'view')
- return cache/'view' 
+ return cache/'view'
 
 if __name__=='__main__':
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--assets',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
