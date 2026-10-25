@@ -31,6 +31,9 @@ def check(root,build):
    if manifest.stat().st_size<=2*1024*1024:
     data=json.loads(manifest.read_text())
     ready=isinstance(data,dict)and type(data.get('ui_cache_version'))is int and data['ui_cache_version']==4 and type(data.get('controller_cache_version'))is int and data['controller_cache_version']==4 and all((native/'cache'/name/file).is_file()for name,files in OUTPUTS.items()for file in files)
+    if ready and 'ui_layout_cache_version'in data:
+     layout=native/'cache/ui-layout-v1'
+     ready=type(data['ui_layout_cache_version'])is int and data['ui_layout_cache_version']==1 and (layout/'manifest.json').is_file()and (layout/'view').is_dir()
   except (OSError,ValueError):pass
   if not ready:
    issues.append('Falta preparar los recursos para el primer inicio. Después de añadir tus archivos originales, sigue el paso de preparación de docs/install.md. No necesitas recompilar el juego si descargaste el paquete precompilado.')

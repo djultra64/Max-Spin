@@ -21,6 +21,10 @@ with tempfile.TemporaryDirectory(prefix='max spin startup ')as temporary:
   for file in files:
    p=native/'cache'/name/file;p.parent.mkdir(parents=True,exist_ok=True);p.touch()
  assert not module.check(root,build)
+ (build/'manifest.json').write_text(json.dumps({'ui_cache_version':4,'controller_cache_version':4,'ui_layout_cache_version':1}))
+ assert module.check(root,build),'new layout build accepted without its local resources'
+ layout=native/'cache/ui-layout-v1';(layout/'view').mkdir(parents=True);(layout/'manifest.json').write_text('{}')
+ assert not module.check(root,build)
  run=subprocess.run([sys.executable,str(path),'--root',str(root),'--build-dir',str(build)],capture_output=True,text=True)
  assert run.returncode==0 and not run.stdout and not run.stderr
  (assets/'menu.xbe').unlink()

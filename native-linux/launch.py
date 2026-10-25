@@ -267,7 +267,13 @@ def main(argv=None):
     try:
         build_dir = args.build_dir.resolve()
         print(f'[BUILD] {build_dir.name!r}; fixed for this session', flush=True)
-        return supervise(args.image, build_dir, args.assets.resolve(), args.saves.resolve())
+        assets = args.assets.resolve()
+        layout = HERE / 'cache/ui-layout-v1'
+        if (layout.exists() or layout.is_symlink()) and assets == (HERE.parent / 'assets').resolve():
+            sys.path.insert(0, str(HERE / 'tools'))
+            from ui_layout import select_assets
+            assets = select_assets(assets, layout)
+        return supervise(args.image, build_dir, assets, args.saves.resolve())
     except (ValueError, OSError) as error:
         print(f'[LAUNCH] {error}', file=sys.stderr)
         return 2

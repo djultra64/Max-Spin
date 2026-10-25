@@ -21,3 +21,5 @@ See [troubleshooting](docs/troubleshooting.md) when a build or launch fails. Whe
 Max Spin integration and project work: **djultra64**. The original game remains the work of its respective creators and rights holders. This independent project is not affiliated with or endorsed by them.
 
 Original project code is available under the [MIT license](LICENSE). Bundled dependencies have their own licenses, including LGPL components; see [third-party notices](THIRD_PARTY.md). AI assistance is described in [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
+
+Linux UI corrections: [footer spacing and loading transitions](docs/ui-layout-20261025.md).

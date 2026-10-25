@@ -17,12 +17,15 @@ from menu_graphics_scene import prepare as prepare_graphics, resource_header
 from prepare_extended_prompts import prepare as prepare_prompts, EXTRA
 from prepare_hud_prompts import prepare as prepare_hud
 from prepare_sprite_cache import prepare as prepare_sprites
+from ui_layout import prepare as prepare_ui_layout
 
 NATIVE = Path(__file__).resolve().parents[1]
 ROOT = NATIVE.parent
 PROMPT_IMAGES = ('menu', 'game', 'career', 'training', 'playercreator', 'shop', 'online')
 PROMPT_CACHE = 'controller-prompts-v4-extended9-hud-v1'
 OUTPUTS = ('menu-pc-v4', 'sprite-ui-v1-menu', PROMPT_CACHE)
+UI_LAYOUT = 'ui-layout-v1'
+LOCAL_OUTPUTS = OUTPUTS + ((UI_LAYOUT,) if os.name != 'nt' else ())
 BASE_ART = ('XboxSeriesX_A', 'XboxSeriesX_B', 'XboxSeriesX_X', 'XboxSeriesX_Y',
             'PS5_Cross', 'PS5_Circle', 'PS5_Square', 'PS5_Triangle',
             'XboxSeriesX_LB', 'XboxSeriesX_RB', 'PS5_L1', 'PS5_R1',
@@ -44,7 +47,9 @@ def clean_tree(path):
     for current, directories, _ in os.walk(path):
         Path(current).chmod(0o700)
         for name in directories:
-            (Path(current) / name).chmod(0o700)
+            child = Path(current) / name
+            if not child.is_symlink():
+                child.chmod(0o700)
     shutil.rmtree(path)
 
 
@@ -87,7 +92,7 @@ def prepare(assets, build_dir, cache_root, art):
     cache_root = Path(cache_root).absolute()
     if cache_root.is_symlink():
         raise ValueError('cache root cannot be a symlink')
-    for name in OUTPUTS:
+    for name in LOCAL_OUTPUTS:
         path = cache_root / name
         if path.exists() or path.is_symlink():
             raise ValueError('resource output already exists: ' + str(path))
@@ -111,6 +116,8 @@ def prepare(assets, build_dir, cache_root, art):
                 prepare_hud(assets, base / image, final / image)
             else:
                 shutil.copytree(base / image, final / image)
+        if UI_LAYOUT in LOCAL_OUTPUTS:
+            prepare_ui_layout(assets, temporary / UI_LAYOUT)
         manifest = dict(schema='max-spin-local-build-v1', author='djultra64',
                         images=binaries, controller_cache_version=4, controller_glyph_slots=9,
                         controller_hud_cache_version=1, ui_cache_version=4,
@@ -122,16 +129,20 @@ def prepare(assets, build_dir, cache_root, art):
             for path in sorted((temporary / name).rglob('*')):
                 if path.is_file():
                     resources[str(path.relative_to(temporary))] = digest(path)
+        if UI_LAYOUT in LOCAL_OUTPUTS:
+            manifest['ui_layout_cache_version'] = 1
+            for path in [temporary / UI_LAYOUT / 'manifest.json', *sorted((temporary / UI_LAYOUT / 'patches').rglob('*.rui'))]:
+                resources[str(path.relative_to(temporary))] = digest(path)
         manifest['local_resource_sha256'] = resources
         # Publish only after all inputs, generated guards and modules validate.
         # A failed final manifest commit rolls back only this invocation's trees.
-        for name in OUTPUTS:
+        for name in LOCAL_OUTPUTS:
             source, destination = temporary / name, cache_root / name
             # mkdir reserves the final name exclusively. Never replace a
             # directory another process created during resource generation.
             destination.mkdir(mode=0o700)
             published.append(destination)
-            shutil.copytree(source, destination, dirs_exist_ok=True)
+            shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
         encoded = (json.dumps(manifest, indent=2) + '\n').encode()
         fd = os.open(manifest_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:

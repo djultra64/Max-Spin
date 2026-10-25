@@ -1,45 +1,27 @@
-/* Preserve original artwork; extend only sampled court-edge columns. djultra64. */
+/* Stretch the original image, excluding unused POT texels. djultra64. */
 #include "loading_layout.h"
-#include <math.h>
 #include <string.h>
+#include <math.h>
 _Static_assert(sizeof(TopspinLoadingVertex)==28,"Original FVF144 stride");
-int topspin_loading_build_slices(const TopspinLoadingVertex q[4],TopspinLoadingVertex out[12])
+int topspin_loading_build_stretched(const TopspinLoadingVertex q[4],uint32_t width,uint32_t height,TopspinLoadingVertex out[4])
 {
- const float x[]={0,640,640,0},y[]={0,0,480,480};
+ if(!q||!out||!((width==640&&height==480)||(width==1024&&height==512)))return 0;
+ int padded=width==1024&&q[1].x==1024&&q[2].x==1024&&q[2].y==512&&q[3].y==512;
+ float authored_w=padded?1024.f:640.f,authored_h=padded?512.f:480.f;
+ float left=.5f/width,top=.5f/height,right=(authored_w-.5f)/width,bottom=(authored_h-.5f)/height;
  for(unsigned i=0;i<4;i++){
-  if(q[i].x!=x[i]||q[i].y!=y[i]||q[i].z!=1||q[i].rhw!=1||q[i].color!=0xffffffffu
-     ||!isfinite(q[i].u)||!isfinite(q[i].v)||q[i].u<0||q[i].u>1||q[i].v<0||q[i].v>1)return 0;
+  if(q[i].x!=((i==0||i==3)?0:authored_w)||q[i].y!=(i<2?0:authored_h)
+     ||q[i].z!=1||q[i].rhw!=1||q[i].color!=0xffffffffu
+     /* The original1-halftexel subtraction can round one ULP differently
+      * from division when an earlier loader used another FP rounding mode. */
+     ||!isfinite(q[i].u)||!isfinite(q[i].v)
+     ||fabsf(q[i].u-((i==0||i==3)?left:right))>0.0000001f
+     ||fabsf(q[i].v-(i<2?top:bottom))>0.0000001f)return 0;
  }
- if(q[0].u!=q[3].u||q[1].u!=q[2].u||q[0].v!=q[1].v||q[2].v!=q[3].v
-    ||q[0].u>=q[1].u||q[0].v>=q[2].v)return 0;
- const float left[]={0,160,1120},right[]={160,1120,1280};
- for(unsigned slice=0;slice<3;slice++)for(unsigned i=0;i<4;i++){
-  TopspinLoadingVertex*v=&out[slice*4+i];*v=q[i];
-  v->x=(i==0||i==3)?left[slice]:right[slice];v->y=(i<2)?0:720;
-  if(slice==0)v->u=q[0].u;else if(slice==2)v->u=q[1].u;
- }
- return 1;
-}
-
-int topspin_loading_build_backed_slices(const TopspinLoadingVertex q[4],uint32_t width,uint32_t height,TopspinLoadingVertex out[12])
-{
- if(width==640&&height==480)return topspin_loading_build_slices(q,out);
- if(width!=1024||height!=512)return 0;
- TopspinLoadingVertex content[4];memcpy(content,q,sizeof content);
- int padded=q[1].x==1024&&q[2].x==1024&&q[2].y==512&&q[3].y==512;
- const float left=0.5f/1024.f,top=0.5f/512.f;
- const float right=(padded?1023.5f:639.5f)/1024.f,bottom=(padded?511.5f:479.5f)/512.f;
- /* Original CC1F0 stores0.5/textureWidth and0.5/textureHeight; CC4D0 uses
-  * these on UL and1-reciprocal on BR. The filename/accepted720/target
-  * guards live in the enclosing hook. Keep arbitrary UVs/other quads intact. */
+ TopspinLoadingVertex stretched[4];memcpy(stretched,q,sizeof stretched);
  for(unsigned i=0;i<4;i++){
-  if(q[i].u!=((i==0||i==3)?left:right)||q[i].v!=(i<2?top:bottom))return 0;
-  if(padded){
-   if(q[i].x!=((i==0||i==3)?0:1024)||q[i].y!=(i<2?0:512))return 0;
-   content[i].x=(i==0||i==3)?0:640;content[i].y=i<2?0:480;
-   content[i].u=(i==0||i==3)?left:639.5f/1024.f;
-   content[i].v=i<2?top:479.5f/512.f;
-  }
+  stretched[i].x=(i==0||i==3)?0:1280;stretched[i].y=i<2?0:720;
+  stretched[i].u=(i==0||i==3)?left:639.5f/width;stretched[i].v=i<2?top:479.5f/height;
  }
- return topspin_loading_build_slices(content,out);
+ memcpy(out,stretched,sizeof stretched);return 1;
 }
