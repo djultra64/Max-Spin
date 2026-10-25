@@ -11,6 +11,7 @@
 #include <wchar.h>
 #include <string.h>
 #include "graphics_settings.h"
+#include "ui_layout_windows.h"
 static HWND window;static HANDLE quit_event;static int closing;
 static const wchar_t*keys[]={L"boot",L"menu",L"game",L"career",L"training",L"playercreator",L"shop",L"online",L"stop"};
 static const wchar_t*files[]={L"default.xbe",L"TopSpin(Menu).xbe",L"TopSpin(Game).xbe",L"TopSpin(Career).xbe",L"TopSpin(Training).xbe",L"TopSpin(PlayerCreator).xbe",L"TopSpin(Shop).xbe",L"TopSpin(Online).xbe",L"TopSpin(Stop).xbe"};
@@ -29,10 +30,13 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,PWSTR command,int show
  if(!saves[0]){if(!GetEnvironmentVariableW(L"LOCALAPPDATA",saves,32768))return error(L"Cannot locate save directory");wcscat(saves,L"/Max Spin/Saves");}if(SHCreateDirectoryExW(NULL,saves,NULL)!=ERROR_SUCCESS&&GetFileAttributesW(saves)==INVALID_FILE_ATTRIBUTES)return error(L"Cannot create save folder");
  for(int k=0;k<9;k++){wchar_t p[32768],name[64];swprintf(name,64,L"topspin_%ls.exe",keys[k]);if(!path(p,32768,root,name)||!regular(p))return error(L"Install the complete Max Spin package with all nine image workers.");if(!path(p,32768,assets,files[k])||!regular(p))return error(L"Your game folder is missing an original executable.");}
  if(!resources[0])path(resources,32768,root,L"resources");
+ {wchar_t absolute[32768];DWORD n=GetFullPathNameW(assets,32768,absolute,NULL);if(!n||n>=32768)return error(L"Game path is too long");wcscpy(assets,absolute);n=GetFullPathNameW(resources,32768,absolute,NULL);if(!n||n>=32768)return error(L"Resource path is too long");wcscpy(resources,absolute);}
  wchar_t resource_path[32768],probe[32768];
  const wchar_t*resource_dirs[]={L"menu-pc-v4",L"sprite-ui-v1-menu",L"controller-prompts-v4-extended9-hud-v1/menu"};
  const wchar_t*resource_env[]={L"TOPSPIN_MENU_PC_DIR",L"TOPSPIN_SPRITE_UI_CACHE",L"TOPSPIN_PROMPTS_ROOT"};
  for(int k=0;k<3;k++){path(resource_path,32768,resources,resource_dirs[k]);path(probe,32768,resource_path,k==2?L"manifest.txt":L"manifest.json");if(!regular(probe))return error(L"Prepare your private game resources with setup_game.py, then pass --resources with its cache folder.");if(k==2)path(resource_path,32768,resources,L"controller-prompts-v4-extended9-hud-v1");SetEnvironmentVariableW(resource_env[k],resource_path);}
+ if(!path(resource_path,32768,resources,L"ui-layout-v1")||!topspin_windows_ui_layout_validate(assets,resource_path))return error(L"Prepare the current private UI resources with setup_game.py. The original and private UI archives must match this Max Spin build.");
+ SetEnvironmentVariableW(L"TOPSPIN_UI_LAYOUT_DIR",resource_path);
  if(!graphics[0]){if(!GetEnvironmentVariableW(L"LOCALAPPDATA",graphics,32768))return error(L"Cannot locate preferences");wcscat(graphics,L"/Max Spin");SHCreateDirectoryExW(NULL,graphics,NULL);wcscat(graphics,L"/graphics.ini");}
  SetEnvironmentVariableW(L"TOPSPIN_GRAPHICS_INI",graphics);SetEnvironmentVariableW(L"TOPSPIN_CAREER_SAVE_VERSION",L"1");SetEnvironmentVariableW(L"TOPSPIN_CREATOR_MATERIAL_COHERENCE",L"1");SetEnvironmentVariableW(L"RECOMP_SYNTHETIC_PHYSICAL_NAMESPACE",L"1");
  if(!GetTempPathW(32768,temp))return error(L"Cannot create session");wchar_t session[32768];swprintf(session,32768,L"%lsMaxSpin-%lu-%llu",temp,(unsigned long)GetCurrentProcessId(),(unsigned long long)GetTickCount64());if(!CreateDirectoryW(session,NULL))return error(L"Cannot create private session directory");path(input,32768,session,L"launch-in.bin");path(output,32768,session,L"launch-out.bin");

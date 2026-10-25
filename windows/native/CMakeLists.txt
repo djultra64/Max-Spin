@@ -28,8 +28,9 @@ add_compile_options("-ffile-prefix-map=${TOPSPIN_SDK_ROOT}=vendor/xboxrecomp"
                     "-fdebug-prefix-map=${TOPSPIN_SDK_ROOT}=vendor/xboxrecomp")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../native-linux" title)
 
-add_executable(MaxSpin WIN32 src/launcher_windows.c "${MAXSPIN_SOURCE_ROOT}/native-linux/src/graphics_settings.c" src/graphics_settings_windows.c)
+add_executable(MaxSpin WIN32 src/launcher_windows.c "${MAXSPIN_SOURCE_ROOT}/native-linux/src/graphics_settings.c" src/graphics_settings_windows.c src/ui_layout_windows.c)
+target_compile_definitions(MaxSpin PRIVATE TOPSPIN_UI_LAYOUT_LAUNCHER=1)
 target_include_directories(MaxSpin PRIVATE "${MAXSPIN_SOURCE_ROOT}/native-linux/src")
-target_link_libraries(MaxSpin PRIVATE shell32 comdlg32 user32 ole32)
+target_link_libraries(MaxSpin PRIVATE shell32 comdlg32 user32 ole32 advapi32)
 target_link_options(MaxSpin PRIVATE -municode)
 set_target_properties(MaxSpin PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/title")

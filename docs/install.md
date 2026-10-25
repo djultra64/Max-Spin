@@ -38,7 +38,7 @@ python3 native-linux/tools/setup_game.py --build-dir bin
 ./MaxSpin.sh
 ```
 
-Preparation also creates a private UI layout cache on Linux: lower footer prompts and the corrected match-intro transition. It leaves original game files unchanged. Keep this cache with its prepared installation; create it again when moving to a fresh package.
+Preparation also creates a private UI layout cache for lower footer prompts and the corrected match-intro transition. Original game files stay unchanged. Linux uses a private asset view; Windows redirects only the authenticated UI archives and requires neither administrator access nor filesystem links. Keep this cache with its prepared installation; create it again when moving to a fresh package.
 
 Linux runtime libraries are supplied by your system. A missing-library error should be resolved through the matching distribution packages. Saves are stored in `native-linux/saves`; graphics preferences are in `native-linux/cache/pc-preferences/graphics.ini`.
 

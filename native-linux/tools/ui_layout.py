@@ -73,13 +73,26 @@ def seal_tree(root):
 def discard_tree(root):
  for current,dirs,files in os.walk(root):
   Path(current).chmod(0o700)
+  for name in files:
+   item=Path(current)/name
+   if not item.is_symlink():item.chmod(0o600)
   for name in dirs:
    item=Path(current)/name
    if not item.is_symlink():item.chmod(0o700)
  shutil.rmtree(root)
 
-def prepare(assets,output):
+def resource_header(report):
+ lines=['/* Exact private RUI identities; no original resources. Own work: djultra64. */',
+        '#ifndef TOPSPIN_UI_LAYOUT_RESOURCES_H','#define TOPSPIN_UI_LAYOUT_RESOURCES_H',
+        'static const struct TopspinUILayoutResource {const char *path,*original,*patched;} topspin_ui_layout_resources[]={']
+ for relative,record in sorted(report['archives'].items()):
+  lines.append(' {"'+relative+'","'+record['original_sha256']+'","'+record['patched_sha256']+'"},')
+ lines+=['};','#endif','']
+ return '\n'.join(lines).encode('ascii')
+
+def prepare(assets,output,asset_view=None):
  assets=Path(assets).resolve();output=Path(output).absolute()
+ if asset_view is None:asset_view=os.name!='nt'
  if output.exists()or output.is_symlink():raise ValueError('UI output already exists; preserve it and use a new directory')
  output.parent.mkdir(parents=True,exist_ok=True)
  temporary=Path(tempfile.mkdtemp(prefix='.ui-layout-',dir=output.parent));changed={};footer_nodes=0;intro_fixed=False;unsupported=[]
@@ -122,7 +135,7 @@ def prepare(assets,output):
      if not item.is_dir():raise ValueError('UI path is not a directory')
      link_tree(item,target,relative)
     else:os.symlink(str(item),target)
-  link_tree(assets,view)
+  if asset_view:link_tree(assets,view)
   report={'version':1,'author':'djultra64','source':str(assets),'footer_delta':FOOTER_DY,'footer_nodes':footer_nodes,'intro_fixed':intro_fixed,'archives':changed,'unsupported':unsupported}
   (temporary/'manifest.json').write_text(json.dumps(report,indent=2)+'\n')
   seal_tree(temporary)
@@ -162,5 +175,5 @@ def select_assets(assets,cache):
  return cache/'view'
 
 if __name__=='__main__':
- parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--assets',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
- result=prepare(args.assets,args.output);print('Prepared',result['footer_nodes'],'footer placements across',len(result['archives']),'archives; match intro ownership fixed; originals unchanged.')
+ parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--assets',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--overlay-only',action='store_true',help='prepare modified archives without the Linux symlink view');args=parser.parse_args()
+ result=prepare(args.assets,args.output,asset_view=False if args.overlay_only else None);print('Prepared',result['footer_nodes'],'footer placements across',len(result['archives']),'archives; match intro ownership fixed; originals unchanged.')

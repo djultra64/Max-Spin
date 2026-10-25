@@ -17,7 +17,7 @@ from menu_graphics_scene import prepare as prepare_graphics, resource_header
 from prepare_extended_prompts import prepare as prepare_prompts, EXTRA
 from prepare_hud_prompts import prepare as prepare_hud
 from prepare_sprite_cache import prepare as prepare_sprites
-from ui_layout import prepare as prepare_ui_layout
+from ui_layout import prepare as prepare_ui_layout, resource_header as ui_layout_header
 
 NATIVE = Path(__file__).resolve().parents[1]
 ROOT = NATIVE.parent
@@ -25,7 +25,7 @@ PROMPT_IMAGES = ('menu', 'game', 'career', 'training', 'playercreator', 'shop', 
 PROMPT_CACHE = 'controller-prompts-v4-extended9-hud-v1'
 OUTPUTS = ('menu-pc-v4', 'sprite-ui-v1-menu', PROMPT_CACHE)
 UI_LAYOUT = 'ui-layout-v1'
-LOCAL_OUTPUTS = OUTPUTS + ((UI_LAYOUT,) if os.name != 'nt' else ())
+LOCAL_OUTPUTS = OUTPUTS + (UI_LAYOUT,)
 BASE_ART = ('XboxSeriesX_A', 'XboxSeriesX_B', 'XboxSeriesX_X', 'XboxSeriesX_Y',
             'PS5_Cross', 'PS5_Circle', 'PS5_Square', 'PS5_Triangle',
             'XboxSeriesX_LB', 'XboxSeriesX_RB', 'PS5_L1', 'PS5_R1',
@@ -44,8 +44,12 @@ def digest(path):
 
 def clean_tree(path):
     """Remove only a tree created by the current invocation, including 0555 dirs."""
-    for current, directories, _ in os.walk(path):
+    for current, directories, files in os.walk(path):
         Path(current).chmod(0o700)
+        for name in files:
+            child = Path(current) / name
+            if not child.is_symlink():
+                child.chmod(0o600)
         for name in directories:
             child = Path(current) / name
             if not child.is_symlink():
@@ -116,8 +120,9 @@ def prepare(assets, build_dir, cache_root, art):
                 prepare_hud(assets, base / image, final / image)
             else:
                 shutil.copytree(base / image, final / image)
-        if UI_LAYOUT in LOCAL_OUTPUTS:
-            prepare_ui_layout(assets, temporary / UI_LAYOUT)
+        layout = prepare_ui_layout(assets, temporary / UI_LAYOUT)
+        if ui_layout_header(layout) != (NATIVE / 'src/ui_layout_resources.h').read_bytes():
+            raise ValueError('generated UI layout does not match the compiled resource guards')
         manifest = dict(schema='max-spin-local-build-v1', author='djultra64',
                         images=binaries, controller_cache_version=4, controller_glyph_slots=9,
                         controller_hud_cache_version=1, ui_cache_version=4,

@@ -18,7 +18,7 @@ PATCHES = [HERE / 'vulkan-backend/windows-vulkan.patch',
 
 
 def apply_patch(root, patch):
-    lines = patch.read_text().splitlines(keepends=True)
+    lines = patch.read_text(encoding="utf-8").splitlines(keepends=True)
     index = 0
     while index < len(lines):
         if not lines[index].startswith('--- a/'):
@@ -31,7 +31,7 @@ def apply_patch(root, patch):
         path = root / name
         if Path(name).is_absolute() or '..' in Path(name).parts:
             raise ValueError('Unsafe patch path')
-        original = path.read_text().splitlines(keepends=True)
+        original = path.read_text(encoding="utf-8").splitlines(keepends=True)
         output, cursor = [], 0
         index += 1
         while index < len(lines) and not lines[index].startswith('--- a/'):
@@ -57,7 +57,7 @@ def apply_patch(root, patch):
                     output.append(text)
                 index += 1
         output.extend(original[cursor:])
-        path.write_text(''.join(output), newline='\n')
+        path.write_text(''.join(output), encoding='utf-8', newline='\n')
 
 
 def main():
@@ -77,7 +77,7 @@ def main():
         digest.update(patch.read_bytes())
     identity = digest.hexdigest()
     stamp = destination / '.max-spin-native-sdk.json'
-    if stamp.is_file() and json.loads(stamp.read_text()).get('source_and_patches_sha256') == identity:
+    if stamp.is_file() and json.loads(stamp.read_text(encoding="utf-8")).get('source_and_patches_sha256') == identity:
         print('Native SDK already prepared')
         return
     if destination.exists():

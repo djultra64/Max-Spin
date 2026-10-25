@@ -17,7 +17,7 @@ cmake --build build/native-windows --parallel
 python native-linux/tools/setup_game.py --build-dir build/native-windows/title
 ```
 
-The expected output folder is `build/native-windows/title`, containing `MaxSpin.exe` and nine `topspin_<module>.exe` workers. Keep these executables together. Resource preparation writes local caches under `native-linux/cache` and requires fresh destinations, as described in the build instructions. Runtime DLLs required by the installed SDL3, Vulkan, shaderc, and compiler environment must be available; these commands are not a standalone binary packaging procedure.
+The expected output folder is `build/native-windows/title`, containing `MaxSpin.exe` and nine `topspin_<module>.exe` workers. Keep these executables together. Resource preparation writes local caches under `native-linux/cache`, including `ui-layout-v1` for the corrected footer and match-intro layout, and requires fresh destinations, as described in the build instructions. These private UI archives are authenticated against the original game and do not modify it. Administrator access or filesystem links are not required. Runtime DLLs required by the installed SDL3, Vulkan, shaderc, and compiler environment must be available; these commands are not a standalone binary packaging procedure.
 
 ## Starting
 

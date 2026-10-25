@@ -139,14 +139,16 @@ def prepare(package,directory):
  output=patch(*raw);dst=Path(directory);dst.mkdir(mode=0o700,parents=False);created=[]
  try:
   for name,data in zip(contract()['resources'],output):
-   p=dst/name;fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);created.append(p)
+   p=dst/name;fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0),0o600);created.append(p)
    with os.fdopen(fd,'wb')as f:f.write(data);f.flush();os.fsync(f.fileno())
    p.chmod(0o444)
   manifest=contract();manifest['sha256']={n:hashlib.sha256(d).hexdigest()for n,d in zip(manifest['resources'],output)}
   p=dst/'manifest.json';p.write_text(json.dumps(manifest,indent=2)+'\n');created.append(p);p.chmod(0o444);dst.chmod(0o555)
  except BaseException:
   dst.chmod(0o700)
-  for p in created:p.unlink()
+  for p in created:
+   if not p.is_symlink():p.chmod(0o600)
+   p.unlink()
   dst.rmdir();raise
  return output
 if __name__=='__main__':
@@ -155,5 +157,5 @@ if __name__=='__main__':
  if a.header and a.header.exists():p.error('--header output already exists')
  chunks=prepare(a.package,a.output)
  if a.header:
-  fd=os.open(a.header,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o644)
+  fd=os.open(a.header,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0),0o644)
   with os.fdopen(fd,'wb')as stream:stream.write(resource_header(chunks))

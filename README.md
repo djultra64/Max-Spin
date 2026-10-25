@@ -22,4 +22,4 @@ Max Spin integration and project work: **djultra64**. The original game remains 
 
 Original project code is available under the [MIT license](LICENSE). Bundled dependencies have their own licenses, including LGPL components; see [third-party notices](THIRD_PARTY.md). AI assistance is described in [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
 
-Linux UI corrections: [footer spacing and loading transitions](docs/ui-layout-20261025.md).
+UI corrections: [footer spacing and loading transitions](docs/ui-layout-20261025.md). The Windows implementation is included in the v0.1.1 preview.

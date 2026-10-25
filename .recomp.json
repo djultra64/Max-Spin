@@ -1,0 +1,21 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Top Spin",
+  "system": "Xbox",
+  "type": "recomp",
+  "project": "Max Spin",
+  "status": "released",
+  "targets": [
+    "Windows",
+    "Linux"
+  ],
+  "toolchain": "Xboxrecomp",
+  "approach": "Static recompilation of Xbox x86 code with the xboxrecomp runtime, SDL3 and Vulkan.",
+  "maintainers": [
+    {
+      "name": "djultra64",
+      "link": "https://github.com/djultra64"
+    }
+  ],
+  "notes": "Experimental public preview. Windows: Menu to Exhibition to Game, including a serve, exercised; complete matches and full mode coverage remain unverified. Linux: existing Career loading and recent UI/loading corrections exercised; full Career progression and new-save behavior remain under test. Audio, graphics, saves and broad physical-controller coverage still need validation; some appearance variants have black materials or incomplete previews. Online play is not validated."
+}
