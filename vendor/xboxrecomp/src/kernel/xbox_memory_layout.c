@@ -4096,7 +4096,21 @@ static void contig_insert(int at, uint32_t addr, uint32_t size, int is_free)
 
 static int contiguous_reclaim_enabled(void)
 {
-    return getenv("RECOMP_CONTIG_RECLAIM") != NULL || xbox_HeapReclaimEnabled();
+    /* Startup switch, like heap reclaim. Only this selection is cached: live
+     * allocation spans/free/reuse epochs still require g_contig_lock on every
+     * lookup. All callers enter here before taking that lock. djultra64. */
+    static atomic_int selected = -1;
+    int value = atomic_load_explicit(&selected, memory_order_acquire);
+    if (value < 0) {
+        AcquireSRWLockExclusive(&g_contig_lock);
+        value = atomic_load_explicit(&selected, memory_order_relaxed);
+        if (value < 0) {
+            value = getenv("RECOMP_CONTIG_RECLAIM") != NULL || xbox_HeapReclaimEnabled();
+            atomic_store_explicit(&selected, value, memory_order_release);
+        }
+        ReleaseSRWLockExclusive(&g_contig_lock);
+    }
+    return value;
 }
 
 uint32_t xbox_ContiguousAlloc(uint32_t size, uint32_t alignment)

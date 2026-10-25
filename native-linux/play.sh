@@ -36,6 +36,12 @@ if [[ $TOPSPIN_MANUAL_DIAGNOSTICS == 1 ]]; then
 else
     export RECOMP_RUNTIME_QUIET=${RECOMP_RUNTIME_QUIET:-1}
 fi
+# Normal play never inherits the costly scene-capture experiment or profiler.
+# Diagnostic tools launch their private process directly. Own work: djultra64.
+for visual_option in ${!TOPSPIN_VISUAL_@}; do
+    unset "$visual_option"
+done
+unset RECOMP_EXECUTOR_INVOKE CPUPROFILE CPUPROFILESIGNAL CPUPROFILE_REALTIME
 export RECOMP_WATCHDOG_SECS=0
 unset RECOMP_PAD_SCRIPT RECOMP_PAD_SCRIPT_FORMAT RECOMP_PAD_LIVE
 unset RECOMP_PAD_PRESS RECOMP_PAD_SCRIPT_KEYS RECOMP_PAD_SCRIPT_VIRTUAL
