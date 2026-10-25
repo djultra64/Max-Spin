@@ -2,6 +2,22 @@
 
 A native package includes the Max Spin launcher, nine native game modules, controller artwork, preparation tools, source, licenses, and runtime relinking materials. **You must supply your own extracted original Xbox game files.** These previews have incomplete compatibility; see the limitations in the [README](../README.md) and [Windows status](windows.md).
 
+## First launch
+
+On Linux, double-clicking MaxSpin.sh now shows a visible message when the original
+game files are missing, the native executables have not been built or are
+incomplete, or the local resources have not been prepared. It checks these
+requirements before opening the game window. Unexpected startup failures also
+show a message and save their details in native-linux/logs/launcher-*.log.
+The launcher uses Zenity or KDialog for the message. If neither is available,
+it opens the explanation with the desktop text-file opener (xdg-open or GIO).
+
+An ISO file alone is not ready to launch. This version uses the extracted disc
+contents; put those files, including Media and all nine executable images, in
+assets and follow the preparation step below. The launcher does not extract an
+ISO or compile the game automatically. A prebuilt package already includes the
+native executables, so its first setup does not require recompilation.
+
 ## Prepare your files
 
 1. Extract the complete package into a writable folder.
