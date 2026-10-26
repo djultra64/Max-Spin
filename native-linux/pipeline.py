@@ -194,6 +194,42 @@ def route_creator_material_reservation_observer(data):
     return b'#include "playercreator_material_tracking_hooks.h"\n' + data[:match.start()] + new + data[end:]
 
 
+def route_hair_pass_trace(data):
+    # Keep the original body exact; only route same-TU material calls through
+    # the default-off observer. Own integration: djultra64.
+    name = b'00068AE0'
+    if b'sub_00068AE0_hair_trace_original(void)' in data:
+        raise ValueError('Hair original already routed')
+    match = re.search(rb'void sub_' + name + rb'\(void\)\s*\{', data)
+    if not match:
+        return data
+    end = data.index(b'\n}\n', match.start()) + 3
+    body = data[match.start():end]
+    if hashlib.sha256(body).hexdigest() != 'eb0b246c66e8818ed10854026464230d8e35005f35b9cc8b15aeb94dcb4a4ec0':
+        raise ValueError('Unreviewed original hair material traversal')
+    original = b'void sub_00068AE0(void)'
+    renamed = b'__attribute__((section("guest_code"))) void sub_00068AE0_hair_trace_original(void)'
+    return data[:match.start()] + body.replace(original, renamed, 1) + data[end:]
+
+
+def route_crowd_pose_trace(data):
+    # Keep the original body exact; only route same-TU source update calls through
+    # the default-off observer. Own integration: djultra64.
+    name = b'000B7C70'
+    if b'sub_000B7C70_crowd_trace_original(void)' in data:
+        raise ValueError('Crowd original already routed')
+    match = re.search(rb'void sub_' + name + rb'\(void\)\s*\{', data)
+    if not match:
+        return data
+    end = data.index(b'\n}\n', match.start()) + 3
+    body = data[match.start():end]
+    if hashlib.sha256(body).hexdigest() != 'e5e8944689e2a5c745a193153ed8d287a401929d1744affdc4e4f23d09c50680':
+        raise ValueError('Unreviewed original crowd source update')
+    original = b'void sub_000B7C70(void)'
+    renamed = b'__attribute__((section("guest_code"))) void sub_000B7C70_crowd_trace_original(void)'
+    return data[:match.start()] + body.replace(original, renamed, 1) + data[end:]
+
+
 def route_actor_binding_wrappers(data):
     # Frozen original bodies; host wrappers call each renamed original once.
     # Explicit section retains the original scheduler's guest-code boundary.
@@ -292,6 +328,8 @@ def main():
                 if args.image == 'game':
                     data = route_pb_publication_observers(data)
                     data = route_actor_binding_wrappers(data)
+                    data = route_hair_pass_trace(data)
+                    data = route_crowd_pose_trace(data)
                 if args.image == 'playercreator':
                     data = route_creator_material_reservation_observer(data)
                 if source.name == 'recomp_funcs.h':

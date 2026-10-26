@@ -1138,6 +1138,20 @@ int d3d8_vk_rt_bind(unsigned stage,uint32_t addr,uint32_t w,uint32_t h,uint32_t 
     return 1;
 }
 
+int d3d8_vk_rt_diagnostic_rgb565(uint32_t *addresses,uint32_t capacity,uint32_t *total)
+{
+    if(!vk.ready || !total || (capacity && !addresses))return 0;
+    uint32_t count=0;
+    for(unsigned i=0;i<rt_color_n;i++) {
+        const RtColor *c=rt_colors[i];
+        if(!c->current || c->depth_only || c->color_bytes!=2 ||
+           c->tex.width!=64 || c->tex.height!=128 || c->tex.format!=D3DFMT_R5G6B5)continue;
+        if(count<capacity)addresses[count]=c->desc.color;
+        count++;
+    }
+    *total=count;return 1;
+}
+
 int d3d8_vk_rt_extent(uint32_t addr,D3D8VkRasterExtent *out)
 {
     RtColor*c=rt_find(addr);if(!vk.ready||!c||!out)return 0;

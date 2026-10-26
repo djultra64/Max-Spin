@@ -22,6 +22,12 @@ int d3d8_vk_set_guest_raster_scale(uint32_t numerator,uint32_t denominator);
 typedef struct {uint32_t guest_width,guest_height,raster_width,raster_height;} D3D8VkRasterExtent;
 /* Pure metadata query; output is unchanged on failure. */
 int d3d8_vk_rt_extent(uint32_t color,D3D8VkRasterExtent *extent);
+/* Diagnostic metadata only, GPU executor owner thread. Enumerate current
+ * 64x128 RGB565 color-target generations into at most capacity addresses.
+ * total reports all eligible targets even when truncated; capacity0 permits
+ * addressesNULL. Returns0 before readiness or on invalid arguments, leaving
+ * outputs unchanged. No readback, allocation, Vulkan call or state mutation. */
+int d3d8_vk_rt_diagnostic_rgb565(uint32_t *addresses,uint32_t capacity,uint32_t *total);
 /* Actual chosen device framebuffer/image limits, not a VRAM or performance
  * guarantee. Returns0 until a device is ready; output unchanged on failure. */
 int d3d8_vk_raster_limits(uint32_t *width,uint32_t *height);

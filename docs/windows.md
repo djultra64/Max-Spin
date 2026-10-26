@@ -32,3 +32,16 @@ MaxSpin.exe --assets "GAME_DIRECTORY" --resources "RESOURCE_DIRECTORY" --image m
 Without `--saves`, saves default to the `Max Spin/Saves` folder under Windows Local AppData. Keep that directory when resetting graphics preferences. If `--assets` is omitted, the launcher can ask you to select the original `default.xbe`.
 
 Complete matches and mode coverage, high frame rate physics, and broad controller/save compatibility are not established by this limited validation. Report failures with reproduction steps and a redacted log excerpt, without uploading original game files or saves.
+
+## v0.1.2 build
+
+The Windows build includes the shared replay viewport/aspect correction and the
+updated SDK capture interfaces (diagnostics are off by default). The v0.1.2
+build is checked with native compilation and CPU contracts. The earlier
+Menu → Exhibition → Game gameplay observation above is historical; this
+release has no new Windows gameplay session.
+
+Automatic local athlete package loading is Linux-only. The native Windows
+launcher currently keeps the original roster. Package files and authoring tools
+are included as corresponding source; installing them through that launcher
+is not implemented.

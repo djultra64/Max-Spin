@@ -3,7 +3,7 @@
   "patches": [
     {
       "path": "windows-runtime.patch",
-      "sha256": "e0a614bf71d33f25ed11f9724e66b879c88c46a3c315beb1e7f6b21ba3befd7e",
+      "sha256": "57b7291c35ecebb6a57d97457976d17fff9c76d048564c2a47eda6bc32cce69b",
       "files": [
         {
           "path": "src/kernel/kernel_bridge.c",
@@ -27,13 +27,13 @@
         },
         {
           "path": "src/kernel/nv2a_pb_exec.c",
-          "baseline_sha256": "408406d9ab4ed066f526ad6336acf774a6c4a4fa5c440656a7d0451f0718684e",
-          "result_sha256": "ec1ef43a1ae18e69e4b7b9894ebcc3b456b9d6d2d34cb1f1f2c1885967451dff"
+          "baseline_sha256": "aa50eecd562313c3a99bc02154987ea14713aed1474d1376b61158fa9b23d290",
+          "result_sha256": "922e75e16ba1eeaf7ce046481a1bb98b0f4e6fbdf196ae4197d372335e3e3f48"
         },
         {
           "path": "src/kernel/xbox_memory_layout.c",
-          "baseline_sha256": "fc4b2ba2b6fa40d4a5e90a769346539b990f3d23c5511ff6cf8d3c0491db796d",
-          "result_sha256": "9886e03890d41999b0aab30fb82098c0ca99743f7253a44e5bd364c2ade8846c"
+          "baseline_sha256": "ea75e089ddf50412d7cd475d4f8eb7b943a72ee2f47e57d2a636fd67fed8e92b",
+          "result_sha256": "71c0b5d9afd6716572ed38f856bed66380ba245f71773232cceb06ebf6a15ff4"
         },
         {
           "path": "src/platform/CMakeLists.txt",

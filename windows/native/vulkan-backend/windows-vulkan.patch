@@ -223,7 +223,7 @@
  
  #include <vulkan/vulkan.h>
  #include "sprite_xbr_vk.h"
-@@ -3970,10 +3970,10 @@
+@@ -3984,10 +3984,10 @@
          D3DFORMAT fmt, D3DPOOL pool, IDirect3DIndexBuffer8 **pp)
  { (void)s; (void)len; (void)usage; (void)fmt; (void)pool; if (pp) *pp = NULL; return D3DERR_INVALIDCALL; }
  static HRESULT __stdcall dev_CreateRenderTarget(IDirect3DDevice8 *s, UINT w, UINT h,

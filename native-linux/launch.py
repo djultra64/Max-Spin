@@ -220,6 +220,7 @@ def _supervise_session(image, build_dir, assets, saves, child_env, initial_comma
                 # commands from its menu must not replay in the next image.
                 for variable in ('TOPSPIN_CAPTURE_PREFIX', 'TOPSPIN_BLACK_WATCH_PREFIX',
                                  'RECOMP_POINT_CAPTURE_PREFIX', 'TOPSPIN_REPLAY_SAMPLE_PREFIX',
+                                 'RECOMP_HAIR_CAPTURE_PREFIX', 'TOPSPIN_CROWD_CAPTURE_PREFIX',
                                  'TOPSPIN_PHYSICS_TRACE', 'TOPSPIN_RENDER_TRACE',
                                  'TOPSPIN_INTERVAL_EVENTS', 'TOPSPIN_TIMING_TRACE',
                                  'TOPSPIN_CPU_PROFILE', 'TOPSPIN_MENU_INPUT_TRACE',
@@ -263,6 +264,8 @@ def main(argv=None):
     parser.add_argument('--build-dir', type=Path, default=HERE / 'build')
     parser.add_argument('--assets', type=Path, default=HERE.parent / 'assets')
     parser.add_argument('--saves', type=Path, default=HERE / 'saves')
+    parser.add_argument('--characters', type=Path, default=HERE.parent / 'characters',
+                        help='Optional numbered character folders; empty slots use originals')
     args = parser.parse_args(argv)
     try:
         build_dir = args.build_dir.resolve()
@@ -273,7 +276,13 @@ def main(argv=None):
             sys.path.insert(0, str(HERE / 'tools'))
             from ui_layout import select_assets
             assets = select_assets(assets, layout)
-        return supervise(args.image, build_dir, assets, args.saves.resolve())
+        sys.path.insert(0, str(HERE / 'tools'))
+        from character_packages import asset_session
+        # Freeze one view for the complete session, including every original
+        # image handoff. Keep it alive until the persistent window has closed.
+        with asset_session(assets, args.characters.absolute(),
+                           temporary_root=HERE / 'cache/session-tmp') as selected_assets:
+            return supervise(args.image, build_dir, selected_assets, args.saves.resolve())
     except (ValueError, OSError) as error:
         print(f'[LAUNCH] {error}', file=sys.stderr)
         return 2
