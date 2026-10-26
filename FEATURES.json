@@ -1,0 +1,25 @@
+{
+  "schema": "maxspin-feature-parity-v1",
+  "platforms": {
+    "linux": {
+      "athlete-packages": 1,
+      "widescreen-replays": 1,
+      "controller-action-mapping": 1,
+      "controller-family-glyphs": 1,
+      "graphics-options": 1,
+      "sprite-filtering": 1,
+      "persistent-game-window": 1,
+      "isolated-save-storage": 1
+    },
+    "windows": {
+      "athlete-packages": 1,
+      "widescreen-replays": 1,
+      "controller-action-mapping": 1,
+      "controller-family-glyphs": 1,
+      "graphics-options": 1,
+      "sprite-filtering": 1,
+      "persistent-game-window": 1,
+      "isolated-save-storage": 1
+    }
+  }
+}

@@ -34,6 +34,7 @@ MAX_MANIFEST = 128 * 1024
 MAX_FILE = 128 * 1024 * 1024
 MAX_PACKAGE = 256 * 1024 * 1024
 _SHA256 = re.compile(r'[0-9a-f]{64}\Z')
+_DEVICE = re.compile(r'(?:con|prn|aux|nul|conin\$|conout\$|clock\$|com[1-9]|lpt[1-9])\Z', re.I)
 
 
 def slot_info(slot):
@@ -52,19 +53,47 @@ def _relative(value):
     parts = value.split('/')
     if any(part in ('', '.', '..') for part in parts) or PurePosixPath(value).is_absolute():
         raise ValueError('resource path escapes package')
+    if len(value) > 240 or any(ord(c) < 32 or ord(c) > 126 or c in '<>:"|?*' for c in value):
+        raise ValueError('resource path is not Windows-portable ASCII')
+    if any(part.endswith((' ', '.')) or _DEVICE.fullmatch(part.split('.')[0].rstrip(' ')) for part in parts):
+        raise ValueError('resource path contains a Windows-reserved name')
     return value
 
 
-def _read_package(root, relative, limit):
+def resource_path(relative):
+    """Accept only disc resources supported by the shared character composer."""
+    relative = _relative(relative)
+    allowed = {'Media/Wads/Db.wad', 'Media/Wads/GameIni.wad'}
+    allowed.update(f'Media/Wads/Players/{target}{outfit:02d}.wad'
+                   for target, _ in SLOTS for outfit in (0, 1))
+    if relative.casefold() not in {path.casefold() for path in allowed}:
+        raise ValueError('unsupported character session resource')
+    return relative
+
+
+def _read_package(root, relative, limit, *, with_path=False):
     """Read through directory descriptors, rejecting every symlink component."""
     parts = _relative(relative).split('/')
+    if os.name == 'nt':
+        from character_windows_reader import read_bounded
+        data, selected = read_bounded(root, relative, limit)
+        return (data, selected) if with_path else data
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    selected = []
     try:
-        for part in parts[:-1]:
+        for index, requested in enumerate(parts):
+            matches = [name for name in os.listdir(descriptor) if name.casefold() == requested.casefold()]
+            if len(matches) != 1:
+                raise ValueError('missing or case-colliding package resource')
+            part = matches[0]
+            _relative(part)
+            selected.append(part)
+            if index == len(parts) - 1:
+                break
             next_descriptor = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = next_descriptor
-        file_descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+        file_descriptor = os.open(part, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
         with os.fdopen(file_descriptor, 'rb') as source:
             info = os.fstat(source.fileno())
             if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
@@ -72,7 +101,7 @@ def _read_package(root, relative, limit):
             data = source.read(limit + 1)
             if len(data) > limit:
                 raise ValueError('package file exceeds size limit')
-            return data
+            return (data, '/'.join(selected)) if with_path else data
     finally:
         os.close(descriptor)
 
@@ -148,12 +177,11 @@ def _load(package, assets):
     source_only = {'Media/Wads/GamePart.wad', f'Media/Wads/PlayerCreator{cloth}Cloth.wad'}
     if not isinstance(bases, dict) or not touched <= set(bases) or set(bases) - touched - source_only:
         raise ValueError('source bindings do not cover exact native resources')
-    payloads, originals, replacements = {}, {}, {}
+    payloads, originals, replacements, source_paths = {}, {}, {}, {}
     total = 0
     for archive, digest in bases.items():
         _relative(archive)
-        with (assets / archive).open('rb') as source:
-            data = source.read(MAX_FILE + 1)
+        data, source_paths[archive] = _read_package(assets, archive, MAX_FILE, with_path=True)
         if len(data) > MAX_FILE or hashlib.sha256(data).hexdigest() != _hash(digest):
             raise ValueError(f'original source hash mismatch: {archive}')
         total += len(data)
@@ -164,7 +192,7 @@ def _load(package, assets):
         if not isinstance(row, dict):
             raise ValueError('invalid payload descriptor')
         relative = _relative(row.get('path'))
-        if relative in payloads:
+        if relative.casefold() in {key.casefold() for key in payloads}:
             raise ValueError('duplicate package payload')
         data = _read_package(package, relative, MAX_FILE)
         total += len(data)
@@ -173,7 +201,8 @@ def _load(package, assets):
         payloads[relative] = data
         if archive is not None:
             replacements[archive] = data
-    report = _native_validate(manifest, originals, payloads) or {}
+    report = dict(_native_validate(manifest, originals, payloads) or {})
+    report['source_paths'] = source_paths
     return manifest, originals, replacements, payloads, report
 
 
@@ -338,18 +367,7 @@ def asset_session(assets: Path, packages: Path, *, temporary_root: Path | None =
     No directory is created when no package replacements are selected.
     """
     assets, packages = Path(assets), Path(packages)
-    replacements, claims = {}, set()
-    if packages.is_dir():
-        for package in sorted((path for path in packages.iterdir() if path.name.isdecimal()),
-                              key=lambda path: int(path.name)):
-            manifest = package / 'manifest.json'
-            if not manifest.exists() and not manifest.is_symlink():
-                continue
-            try:
-                loaded = _load(package, assets)
-                replacements, claims = _compose(loaded, replacements, claims)
-            except (ValueError, OSError, KeyError, TypeError, StopIteration, UnicodeError, ImportError, configparser.Error) as error:
-                print(f'Character slot {package.name}: {error}; keeping defaults.', file=sys.stderr)
+    replacements, _ = collect_replacements(assets, packages)
     if not replacements:
         yield assets
         return
@@ -362,3 +380,33 @@ def asset_session(assets: Path, packages: Path, *, temporary_root: Path | None =
         selected.chmod(0o700)
         _overlay(assets.resolve(), selected, replacements)
         yield selected
+
+
+def collect_replacements(assets: Path, packages: Path):
+    """Freeze one shared validation/composition result and its validated sources.
+
+    Keys retain actual disc filename case, so the Linux overlay and the Windows
+    manifest both address the bytes that were read. Hashes never reopen sources.
+    """
+    assets, packages = Path(assets), Path(packages)
+    replacements, claims, originals, source_paths = {}, set(), {}, {}
+    if packages.is_dir():
+        for package in sorted((path for path in packages.iterdir() if path.name.isdecimal()),
+                              key=lambda path: int(path.name)):
+            manifest = package / 'manifest.json'
+            if not manifest.exists() and not manifest.is_symlink():
+                continue
+            try:
+                loaded = _load(package, assets)
+                for archive, data in loaded[1].items():
+                    if archive in originals and originals[archive] != hashlib.sha256(data).digest():
+                        raise ValueError('original source changed between character packages')
+                composed, accepted_claims = _compose(loaded, replacements, claims)
+                replacements, claims = composed, accepted_claims
+                originals.update({archive: hashlib.sha256(data).digest() for archive, data in loaded[1].items()})
+                source_paths.update(loaded[4]['source_paths'])
+            except (ValueError, OSError, KeyError, TypeError, StopIteration, UnicodeError, ImportError, configparser.Error) as error:
+                print(f'Character slot {package.name}: {error}; keeping defaults.', file=sys.stderr)
+    selected = {source_paths[key]: data for key, data in replacements.items()}
+    hashes = {source_paths[key]: originals[key] for key in replacements}
+    return selected, hashes

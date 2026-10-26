@@ -9,8 +9,17 @@ Xbox. Una imagen de retrato por sí sola tampoco crea un modelo jugable.
 
 Los comandos de esta guía se ejecutan desde la carpeta que contiene
 `native-linux/`, `assets/` y `characters/`. Necesitas Python 3.10 o posterior en
-Linux. La preparación y validación no arrancan el juego ni modifican las
+Linux o Windows. En los ejemplos, usa `py -3` o `python` en Windows en lugar de
+`python3`. La preparación y validación no arrancan el juego ni modifican las
 partidas guardadas.
+
+Los dos lanzadores cargan los mismos paquetes de `characters/` al iniciar cada
+sesión. En Windows, conserva Python 3 instalado y el paquete completo junto a
+`MaxSpin.exe`. El lanzador prepara una copia temporal de los WADs modificados y
+los nueve módulos nativos verifican sus rutas y hashes. No necesitas permisos
+de administrador ni enlaces de archivos. El paquete queda congelado durante
+todos los cambios de modo; reinicia el juego para recoger cambios posteriores.
+Para usar otra ubicación, ambos lanzadores aceptan `--characters RUTA`.
 
 ## Elegir la plaza
 

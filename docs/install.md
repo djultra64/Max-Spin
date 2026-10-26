@@ -38,7 +38,7 @@ python3 native-linux/tools/setup_game.py --build-dir bin
 ./MaxSpin.sh
 ```
 
-Preparation also creates a private UI layout cache for lower footer prompts and the corrected match-intro transition. Original game files stay unchanged. Linux uses a private asset view; Windows redirects only the authenticated UI archives and requires neither administrator access nor filesystem links. Keep this cache with its prepared installation; create it again when moving to a fresh package.
+Preparation also creates a private UI layout cache for lower footer prompts and the corrected match-intro transition. Original game files stay unchanged. Linux uses a private asset view; Windows redirects authenticated UI archives and frozen athlete-package archives and requires neither administrator access nor filesystem links. Keep this cache with its prepared installation; create it again when moving to a fresh package.
 
 Linux runtime libraries are supplied by your system. A missing-library error should be resolved through the matching distribution packages. Saves are stored in `native-linux/saves`; graphics preferences are in `native-linux/cache/pc-preferences/graphics.ini`.
 
@@ -56,6 +56,19 @@ python native-linux/tools/setup_game.py --build-dir .
 Use `py -3` instead of `python` if that is how your Python 3 installation is invoked. The `--resources` argument selects the local resources created by preparation. You can select another original game directory with `--assets`; use that same directory with `setup_game.py --assets` during preparation.
 
 Saves default to `Max Spin/Saves` under Windows Local AppData. Graphics preferences default to `Max Spin/graphics.ini` there. The launcher accepts `--saves` and `--graphics` for explicit locations. Preserve the complete save folder when moving or updating the application.
+
+## Optional athlete packages on both platforms
+
+Place compatible packages in the numbered `characters/` folders beside the
+launcher. Both platforms use the same manifest, native outfits, portraits,
+scoreboard name lettering and validation. Empty or rejected slots retain their
+original athlete. Keep Python3 available on Windows; it prepares the frozen
+session before the game window opens. No administrator privileges or filesystem
+links are needed. Only changed archives are copied. Original game files and
+save files remain separate.
+
+See [package authoring](../characters/AUTHORING.md). Both launchers accept
+`--characters PATH`. Restart the game to load package changes.
 
 ## Playing and reporting issues
 

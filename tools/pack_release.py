@@ -368,6 +368,42 @@ def collect_dlls(executables, search, destination, additional_system=()):
     return copied
 
 
+def load_feature_parity(source):
+    """Refuse releases whose declared user features differ by platform."""
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate feature declaration')
+            result[key] = value
+        return result
+    try:
+        with (Path(source) / 'FEATURES.json').open('rb') as stream:
+            data = stream.read(65537)
+        if len(data) > 65536:
+            raise ValueError('oversized declaration')
+        declaration = json.loads(data, object_pairs_hook=unique)
+        if (not isinstance(declaration, dict)
+                or set(declaration) != {'schema', 'platforms'}
+                or declaration['schema'] != 'maxspin-feature-parity-v1'):
+            raise ValueError('unsupported declaration')
+        platforms = declaration['platforms']
+        if not isinstance(platforms, dict) or set(platforms) != {'linux', 'windows'}:
+            raise ValueError('both supported platforms required')
+        for features in platforms.values():
+            if not isinstance(features, dict) or not features or len(features) > 128:
+                raise ValueError('nonempty feature set required')
+            for name, revision in features.items():
+                if (not re.fullmatch(r'[a-z][a-z0-9-]{0,63}', name)
+                        or type(revision) is not int or not 1 <= revision <= 2147483647):
+                    raise ValueError('invalid feature or revision')
+        if platforms['linux'] != platforms['windows']:
+            raise ValueError('Linux and Windows features/revisions must match')
+        return dict(platforms['linux'])
+    except (OSError, ValueError, RecursionError) as error:
+        raise ValueError('feature parity: ' + str(error)) from error
+
+
 def package(args):
     source, build = args.source_root.resolve(), args.build_root.resolve()
     output = args.output.absolute()
@@ -375,6 +411,7 @@ def package(args):
         raise ValueError('package output must be new')
     if output == source or source in output.parents:
         raise ValueError('package output must be outside the source tree')
+    features = load_feature_parity(source)
     specification = json.loads(args.link_commands.read_text())
     commands = specification.get('commands') if isinstance(specification, dict) else specification
     if not isinstance(commands, list):
@@ -471,7 +508,7 @@ def package(args):
         files = {str(p.relative_to(temporary)): sha(p) for p in sorted(temporary.rglob('*')) if p.is_file()}
         (temporary / 'RELEASE_MANIFEST.json').write_text(json.dumps(dict(
             version=1, project='Max Spin', author='djultra64', platform=args.platform,
-            files=files, runtime_dlls=dlls, source_included=True,
+            files=files, runtime_dlls=dlls, source_included=True, features=features,
             limits=['Requires original game files supplied by the user.',
                     'Native game workers contain locally generated translations; project MIT does not license original game rights.',
                     'Packaging is not gameplay or platform validation.']), indent=2) + '\n')

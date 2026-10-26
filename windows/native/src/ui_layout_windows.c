@@ -8,6 +8,7 @@
 #include <string.h>
 #include <wchar.h>
 #include "ui_layout_windows.h"
+#include "character_windows.h"
 #include "ui_layout_resources.h"
 extern int topspin_ui_layout_disc_index(const char*);
 #define RESOURCE_COUNT (sizeof topspin_ui_layout_resources/sizeof topspin_ui_layout_resources[0])
@@ -61,6 +62,8 @@ extern BOOL __real_xbox_translate_path(const char*,WCHAR*,DWORD);
 BOOL __wrap_xbox_translate_path(const char *guest,WCHAR *host,DWORD count)
 {
  if(!__real_xbox_translate_path(guest,host,count))return FALSE;
+ int character=topspin_windows_character_route(guest,host,count);
+ if(character)return character>0?TRUE:FALSE;
  int index=topspin_ui_layout_disc_index(guest);if(index<0)return TRUE;
  wchar_t cache[32768],patched[32768];DWORD n=GetEnvironmentVariableW(L"TOPSPIN_UI_LAYOUT_DIR",cache,32768);
  const struct TopspinUILayoutResource *resource=&topspin_ui_layout_resources[index];

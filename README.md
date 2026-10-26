@@ -26,7 +26,7 @@
 
 See [controls](docs/controls.md), [graphics settings](docs/graphics.md) and [troubleshooting](docs/troubleshooting.md) for setup details. To compile the project yourself, follow the [source build instructions](docs/build.md).
 
-## Athlete packages (Linux, v0.1.2)
+## Athlete packages (Linux and Windows)
 
 You can replace existing roster athletes with a compatible local package without
 recompiling the game. Folders **1–16** address men and **17–32** address women.
@@ -71,7 +71,7 @@ validates complete packages and conflicts; it does not sculpt faces or convert
 arbitrary PC models. The guide lists supported native formats and current
 female-resource conversion limits. Never replace whole shared databases: use
 the supported target-specific typed updates. Original assets and saves stay
-unchanged. Automatic loading of these local athlete packages is currently Linux-only. The native Windows launcher keeps the original roster; package installation there is not implemented yet.
+unchanged. Both launchers automatically load the same numbered folders when a session starts. Windows uses the Python 3 installation already required for setup, freezes only changed archives and verifies them in the native workers; it requires no administrator access or filesystem links. Use `--characters PATH` with either launcher to choose another package directory.
 
 The replay correction scales the original replay rectangles and camera aspect to
 16:9 while retaining the original camera sequence and subviews. This release
@@ -88,6 +88,14 @@ coverage in lower mip levels without changing base alpha or hair colors.
 The user accepted the final Linux visual review. See
 [the authoring guide](characters/AUTHORING.md) for male/female identifiers and
 the repair helper. Diagnostic hair and crowd tracing remains off by default.
+
+## Platform parity
+
+Linux and Windows releases must provide the same user-facing features. The
+shared [feature declaration](FEATURES.json) records both platforms and is checked
+by `python tools/check_feature_parity.py`. Packaging refuses mismatched feature
+sets or revisions. Platform-specific implementation changes must also pass
+functional tests; a matching declaration alone is not proof of parity.
 
 ## Bringing the Xbox game to PC
 

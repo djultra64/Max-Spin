@@ -164,9 +164,10 @@ match/outfit/animation evidence is recorded separately in the migration report.
 Athlete likeness, facial expression quality and physical-controller acceptance
 remain manual judgments.
 
-No nine-image binary rebuild is needed for this Linux resource route: the
-launcher passes one frozen private assets root through every image handoff.
-Original disc resources and saves are not opened for writing. Windows workers
-also accept an assets root, but the supplied Windows launcher still has its
-fixed compiled UI override contract; this Linux preparation/launcher work does
-not claim tested Windows automatic character integration.
+Once using a build with athlete-package support, installing another compatible
+package does not require rebuilding the nine modules on either platform.
+Linux keeps a private asset view; Windows exports only the validated replacements
+and uses pinned native disc-resource routes for the whole session. Both use the
+same validator and shared database/member composer. Source resources and saves
+are not opened for writing. Windows installation requires the current native
+launcher/workers and the Python3 installation already used for setup.
