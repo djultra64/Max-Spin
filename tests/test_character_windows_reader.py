@@ -92,13 +92,13 @@ class WindowsReaderTests(unittest.TestCase):
                     path.rename(path.with_name(path.name + '-moved'))
                 # In-place junction/reparse mutation needs a writable directory
                 # handle; deny that as well as rename/delete while checked.
-                handle = self.reader._kernel.CreateFileW(str(path), 0x40000000, 7,
-                                                         None, 3, 0x02000000, None)
+                directory_handle = self.reader._kernel.CreateFileW(str(path), 0x40000000, 7,
+                                                                   None, 3, 0x02000000, None)
                 try:
-                    self.assertEqual(handle, self.reader._INVALID_HANDLE)
+                    self.assertEqual(directory_handle, self.reader._INVALID_HANDLE)
                 finally:
-                    if handle != self.reader._INVALID_HANDLE:
-                        self.reader._kernel.CloseHandle(handle)
+                    if directory_handle != self.reader._INVALID_HANDLE:
+                        self.reader._kernel.CloseHandle(directory_handle)
             with self.assertRaises(OSError):
                 (self.root / 'nested/payload.wad').open('wb')
             return original(handle, limit)

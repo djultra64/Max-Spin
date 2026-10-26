@@ -81,6 +81,43 @@ class SessionTests(fixtures.FrozenPackageFixture, unittest.TestCase):
         self.exporter().export_session(self.assets, self.root / 'missing', empty)
         self.assertEqual(records(empty), [])
 
+    def test_real_native_manifests_are_discovered_with_upper_and_mixed_case(self):
+        self.validation.stop()
+        self.native(self.package, 'TukurXX')
+        manifest = self.package / 'manifest.json'
+        for index, name in enumerate(('MANIFEST.JSON', 'Manifest.Json')):
+            with self.subTest(name=name):
+                selected = self.package / name
+                manifest.rename(selected)
+                manifest = selected
+                diagnostics = io.StringIO()
+                with contextlib.redirect_stderr(diagnostics):
+                    rows = records(self.export(f'case-{index}'))
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(rows[0][4].read_bytes(), (self.package / 'outfit0.wad').read_bytes())
+                self.assertEqual(diagnostics.getvalue(), '')
+
+    def test_case_colliding_manifest_names_reject_slot_with_diagnostic(self):
+        source = self.package / 'manifest.json'
+        contents = source.read_bytes()
+        source.rename(self.package / 'MANIFEST.JSON')
+        (self.package / 'Manifest.Json').write_bytes(contents)
+        matches = [path for path in self.package.iterdir() if path.name.casefold() == 'manifest.json']
+        if len(matches) != 2:
+            self.skipTest('filesystem does not support distinct case-colliding names')
+        diagnostics = io.StringIO()
+        with contextlib.redirect_stderr(diagnostics):
+            self.assertEqual(records(self.export()), [])
+        self.assertIn('case-colliding', diagnostics.getvalue())
+
+    def test_numbered_folders_without_any_manifest_remain_silent(self):
+        (self.package / 'manifest.json').unlink()
+        (self.packages / '17').mkdir()
+        diagnostics = io.StringIO()
+        with contextlib.redirect_stderr(diagnostics):
+            self.assertEqual(records(self.export()), [])
+        self.assertEqual(diagnostics.getvalue(), '')
+
     def test_real_conflicting_slot_rolls_back_only_that_slot_database_and_members(self):
         import character_formats as formats
         self.validation.stop()

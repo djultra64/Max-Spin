@@ -393,10 +393,11 @@ def collect_replacements(assets: Path, packages: Path):
     if packages.is_dir():
         for package in sorted((path for path in packages.iterdir() if path.name.isdecimal()),
                               key=lambda path: int(path.name)):
-            manifest = package / 'manifest.json'
-            if not manifest.exists() and not manifest.is_symlink():
+            if not package.is_dir():
                 continue
             try:
+                if not any(path.name.casefold() == 'manifest.json' for path in package.iterdir()):
+                    continue
                 loaded = _load(package, assets)
                 for archive, data in loaded[1].items():
                     if archive in originals and originals[archive] != hashlib.sha256(data).digest():
