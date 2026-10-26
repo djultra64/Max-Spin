@@ -1,0 +1,310 @@
+{
+  "schema": "maxspin-character-slots-v1",
+  "author": "djultra64",
+  "order_basis": "male: verified original visible selector row-major; female: provisional native ID allocation, visible order unconfirmed",
+  "visible_selector_order_status": "male verified in actual title capture 2026-10-25; female not verified",
+  "evidence": {
+    "path": "reports/character-native-candidates-20261025/default-034000ms.png",
+    "sha256": "6f02405f40936efd21be834946e7a0da7f8c92848f08f8198472d5c46bc5c4b5"
+  },
+  "slots": [
+    {
+      "slot": 1,
+      "row": 1,
+      "column": 1,
+      "target": "Sampras",
+      "database_id": 7,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 2,
+      "row": 1,
+      "column": 2,
+      "target": "HewittX",
+      "database_id": 8,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 3,
+      "row": 1,
+      "column": 3,
+      "target": "Gambill",
+      "database_id": 9,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 4,
+      "row": 1,
+      "column": 4,
+      "target": "GrosJea",
+      "database_id": 10,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 5,
+      "row": 1,
+      "column": 5,
+      "target": "Kuerten",
+      "database_id": 11,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 6,
+      "row": 1,
+      "column": 6,
+      "target": "ChangXX",
+      "database_id": 12,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 7,
+      "row": 1,
+      "column": 7,
+      "target": "BlakeXX",
+      "database_id": 13,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 8,
+      "row": 1,
+      "column": 8,
+      "target": "Robredo",
+      "database_id": 14,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 9,
+      "row": 2,
+      "column": 1,
+      "target": "TukurXX",
+      "database_id": 15,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 10,
+      "row": 2,
+      "column": 2,
+      "target": "Houston",
+      "database_id": 16,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 11,
+      "row": 2,
+      "column": 3,
+      "target": "WangXXX",
+      "database_id": 17,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 12,
+      "row": 2,
+      "column": 4,
+      "target": "KoenigX",
+      "database_id": 18,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 13,
+      "row": 2,
+      "column": 5,
+      "target": "GideXXX",
+      "database_id": 19,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 14,
+      "row": 2,
+      "column": 6,
+      "target": "Riosxxx",
+      "database_id": 20,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 15,
+      "row": 2,
+      "column": 7,
+      "target": "Emoryxx",
+      "database_id": 21,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "slot": 16,
+      "row": 2,
+      "column": 8,
+      "target": "NashXXX",
+      "database_id": 22,
+      "gender": "male",
+      "order_status": "visible-verified"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 17,
+      "target": "HingisX",
+      "database_id": 516,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 18,
+      "target": "AnnaXXX",
+      "database_id": 517,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 19,
+      "target": "Barbara",
+      "database_id": 518,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 20,
+      "target": "Daniela",
+      "database_id": 519,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 21,
+      "target": "Dementi",
+      "database_id": 520,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 22,
+      "target": "Coetzer",
+      "database_id": 521,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 23,
+      "target": "Harkler",
+      "database_id": 522,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 24,
+      "target": "Shaughn",
+      "database_id": 523,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 25,
+      "target": "Yamanix",
+      "database_id": 524,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 26,
+      "target": "Baretto",
+      "database_id": 525,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 27,
+      "target": "Tellawi",
+      "database_id": 526,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 28,
+      "target": "Abercro",
+      "database_id": 527,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 29,
+      "target": "Auyeung",
+      "database_id": 528,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 30,
+      "target": "Hammond",
+      "database_id": 529,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 31,
+      "target": "sergeye",
+      "database_id": 530,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    },
+    {
+      "row": null,
+      "column": null,
+      "slot": 32,
+      "target": "Hillxxx",
+      "database_id": 531,
+      "gender": "female",
+      "order_status": "provisional-native-id-order"
+    }
+  ],
+  "female_allocation_evidence": {
+    "status": "provisional-native-id-order; no female selector capture or proven menu reader order",
+    "archive": "Media/Wads/Db.wad",
+    "sha256": "2378d77fcbfe29f79cf9e4fbae5a4383488e3972a7ad8bdeb87de50b1774ebcc",
+    "members": {
+      "media/db/players(w).pml": "900b1a981d1e0a6e3d68d7528f05402d4ca9e17e518f47476f93c1dd7a29240e",
+      "media/db/profils(w).pml": "95088b9f3c01f7cf322c066a10bf2e350994d053b98a595a3d8c1f7ac6abdeb3"
+    },
+    "note": "Database identity is verified; these folder numbers do not establish screen coordinates."
+  }
+}

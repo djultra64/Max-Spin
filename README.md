@@ -26,6 +26,69 @@
 
 See [controls](docs/controls.md), [graphics settings](docs/graphics.md) and [troubleshooting](docs/troubleshooting.md) for setup details. To compile the project yourself, follow the [source build instructions](docs/build.md).
 
+## Athlete packages (Linux, v0.1.2)
+
+You can replace existing roster athletes with a compatible local package without
+recompiling the game. Folders **1–16** address men and **17–32** address women.
+The female allocation follows native database IDs; its visible selection order
+still needs verification. Empty or invalid folders retain the original athlete.
+This release includes the tools and empty folders; private custom athlete art
+and original game resources are supplied separately by their owners.
+
+The [complete authoring guide, in Spanish](characters/AUTHORING.md) explains the
+folder structure, required files, validation, installation and rollback. Each
+package requires `manifest.json`, both native Xbox outfit WADs, both model detail
+levels, matching skeleton/material/texture dependencies, and native menu assets:
+
+```text
+characters/<number>/
+  manifest.json
+  outfit0.wad
+  outfit1.wad
+  shared/                 # optional typed GameIni replacements
+```
+
+Inside each outfit, preserve `playerlod00.ooo`, `playerlod01.ooo`, `textures/tex.pak`
+and its original dependencies. Supply a posed card portrait (`vignette1.dds`,
+256×256), a close face portrait (`vignettevisage.dds`, 64×64), and the scoreboard
+name (`scorename.dds`, 128×16) using original native layouts. The scoreboard
+lettering belongs inside both outfit WADs; the supplied helper uses the original
+game font. Portrait source PNGs should be transparent, preferably 512×512. Copy
+all original required members when assembling a native WAD; this is a minimum
+structure, not permission to delete unknown dependencies.
+
+From the package root:
+
+```sh
+python3 native-linux/tools/character_package_tool.py catalog
+python3 native-linux/tools/character_package_tool.py template --assets assets --output-parent athlete-drafts --slot 17 --name "My athlete"
+python3 native-linux/tools/character_package_tool.py validate --assets assets --packages characters
+```
+
+A template stays disabled as `manifest.template.json` until its compatibility
+has been established and its manifest completed. The tool refreshes hashes and
+validates complete packages and conflicts; it does not sculpt faces or convert
+arbitrary PC models. The guide lists supported native formats and current
+female-resource conversion limits. Never replace whole shared databases: use
+the supported target-specific typed updates. Original assets and saves stay
+unchanged. Automatic loading of these local athlete packages is currently Linux-only. The native Windows launcher keeps the original roster; package installation there is not implemented yet.
+
+The replay correction scales the original replay rectangles and camera aspect to
+16:9 while retaining the original camera sequence and subviews. This release
+includes the same runtime correction in Linux and Windows builds. The Linux
+review has passed the user’s visual replay checks; the new Windows build is
+verified by compilation and CPU contracts, without a new gameplay session.
+
+Custom hair preparation retains both native low-detail mesh identities `02`
+and `03` with the selected hairstyle. The original engine hides `02` at far
+distance and `03` at middle distance. Keeping both prevents a change of hairstyle
+or density as the camera moves; the package validator rejects missing or
+mismatched integrated pairs. Texture preparation also preserves overall cutout
+coverage in lower mip levels without changing base alpha or hair colors.
+The user accepted the final Linux visual review. See
+[the authoring guide](characters/AUTHORING.md) for male/female identifiers and
+the repair helper. Diagnostic hair and crowd tracing remains off by default.
+
 ## Bringing the Xbox game to PC
 
 The original game ties its menus, graphics and transitions to Xbox hardware. Max Spin recompiles the game code and connects it to a native PC runtime, adapting rendering, input and window management along the way.

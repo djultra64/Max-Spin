@@ -293,8 +293,9 @@
    * mutex before gc_unblock, inverting it against another guest invoker. */
 --- a/src/kernel/nv2a_pb_exec.c
 +++ b/src/kernel/nv2a_pb_exec.c
-@@ -51,7 +51,7 @@
+@@ -51,8 +51,8 @@
  #include "nv2a_pb_point_capture.h"
+ #include "nv2a_pb_hair_capture.h"
  #if defined(_WIN32)
  #include <windows.h>
 -#define NV_TLS __declspec(thread)

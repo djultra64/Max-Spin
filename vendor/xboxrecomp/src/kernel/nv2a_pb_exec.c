@@ -49,6 +49,7 @@
 #include "nv2a_vsh_interp.h"
 #include "nv2a_combiner.h"
 #include "nv2a_pb_point_capture.h"
+#include "nv2a_pb_hair_capture.h"
 #if defined(_WIN32)
 #include <windows.h>
 #define NV_TLS __declspec(thread)
@@ -701,6 +702,7 @@ typedef struct {
     uint32_t fog_enable,fog_mode,fog_color,fog_gen;float fog_param[2];
     uint32_t blend,src,dst,equation,mask,depth,zfunc,zwrite,stencil,sfunc,atest,afunc,aref;
     Texture textures[4];
+    uint32_t texture_control[4],cull,cull_face,front_face;
     /* Diagnostic snapshot belongs to this draw, not the later dump. djultra64. */
     uint32_t vsh_hash, vsh_constant_version;
     float viewport_scale[4], viewport_offset[4];
@@ -741,6 +743,8 @@ static void history_record(uint32_t kind,uint32_t method,uint32_t param,int rout
     r->stencil=RS(0x32C);r->sfunc=RS(0x364);r->atest=s_gpu.alpha_test;
     r->afunc=s_gpu.alpha_func;r->aref=s_gpu.alpha_ref;
     memcpy(r->textures,s_gpu.texs,sizeof r->textures);
+    memcpy(r->texture_control,s_gpu.texture_control,sizeof r->texture_control);
+    r->cull=RS(0x308);r->cull_face=RS(0x39C);r->front_face=RS(0x3A0);
     r->combiner=s_gpu.rc;
     if(kind==PB_HISTORY_DRAW) {
         const float *constants=nv2a_vsh_constants(&r->vsh_constant_version);
@@ -779,13 +783,13 @@ void nv2a_pb_dump_present_history(uint64_t host_frame,uint64_t elapsed_ns)
             (double)r->viewport_scale[0],(double)r->viewport_scale[1],(double)r->viewport_scale[2],(double)r->viewport_scale[3],
             (double)r->viewport_offset[0],(double)r->viewport_offset[1],(double)r->viewport_offset[2],(double)r->viewport_offset[3]);
         const Nv2aCombiner*c=&r->combiner;
-        fprintf(stderr,"[PB-HISTORY] state seq=%llu blend=%u %X/%X eq=%X mask=%08X depth=%u func=%X write=%u stencil=%u func=%X atest=%u func=%X ref=%X combiner=%08X stages=%05X final=%08X/%08X constants=%08X/%08X\n",
+        fprintf(stderr,"[PB-HISTORY] state seq=%llu blend=%u %X/%X eq=%X mask=%08X depth=%u func=%X write=%u stencil=%u func=%X atest=%u func=%X ref=%X combiner=%08X stages=%05X final=%08X/%08X constants=%08X/%08X cull=%u face=%X front=%X\n",
             (unsigned long long)seq,r->blend,r->src,r->dst,r->equation,r->mask,r->depth,r->zfunc,r->zwrite,
-            r->stencil,r->sfunc,r->atest,r->afunc,r->aref,c->control,c->stage_program,c->final0,c->final1,c->final_c0,c->final_c1);
+            r->stencil,r->sfunc,r->atest,r->afunc,r->aref,c->control,c->stage_program,c->final0,c->final1,c->final_c0,c->final_c1,r->cull,r->cull_face,r->front_face);
         for(unsigned st=0;st<4;st++) {
             const Texture*t=&r->textures[st];
-            fprintf(stderr,"[PB-HISTORY] tex seq=%llu stage=%u addr=%08X format=%02X size=%ux%u pitch=%u valid=%u\n",
-                (unsigned long long)seq,st,t->offset,t->color,t->width,t->height,t->pitch,t->valid);
+            fprintf(stderr,"[PB-HISTORY] tex seq=%llu stage=%u addr=%08X format=%02X size=%ux%u pitch=%u valid=%u disabled=%d levels=%u filter=%08X control=%08X min_lod=%u max_lod=%u address=%X/%X cube=%d\n",
+                (unsigned long long)seq,st,t->offset,t->color,t->width,t->height,t->pitch,t->valid,t->disabled,t->levels,t->filter,r->texture_control[st],(r->texture_control[st]>>18)&0xfffu,(r->texture_control[st]>>6)&0xfffu,t->addr_u,t->addr_v,t->cube);
         }
         for(unsigned st=0;st<(c->control&255u)&&st<8;st++)
             fprintf(stderr,"[PB-HISTORY] cmb seq=%llu stage=%u icw=%08X/%08X ocw=%08X/%08X c=%08X/%08X\n",
@@ -3612,13 +3616,19 @@ done:
 
 /* One-flip late-effect capture. Read-only; no rasterizer substitution.
  * Own work: djultra64. Off unless RECOMP_POINT_CAPTURE_PREFIX is set. */
-static struct {
+typedef struct {
     int initialized,enabled,done,active;const char*prefix;
     uint32_t min_flip,flip;double x,y;
     uint64_t draws,hits,manifest_dropped,unresolved[8],payload_failed;
     unsigned manifest_count;char manifest[PB_POINT_CAPTURE_MANIFEST_LIMIT][768];
     PbPointCaptureRing ring;
-} s_point_capture;
+    uint64_t budget_dropped;
+} PbDrawCapture;
+static PbDrawCapture s_point_capture,s_hair_capture;
+static PbHairSchedule s_hair_schedule;
+static size_t s_hair_total_bytes;
+static uint32_t s_hair_completed_flip;
+static int s_hair_completed_pending;
 static int point_capture_on(void)
 {
     if(!s_point_capture.initialized){
@@ -3632,70 +3642,81 @@ static int point_capture_on(void)
     }
     return s_point_capture.enabled&&!s_point_capture.done;
 }
-static void point_capture_finish(void)
+static void draw_capture_finish(PbDrawCapture *capture,int hair)
 {
-    if(!point_capture_on()||!s_point_capture.active)return;
+    if(!capture->active)return;
+    char frame_prefix[1024];const char*prefix=capture->prefix;
+    if(hair){int n=snprintf(frame_prefix,sizeof frame_prefix,"%s-frame%u",prefix,capture->flip);if(n<0||(size_t)n>=sizeof frame_prefix){pb_point_ring_clear(&capture->ring);capture->active=0;capture->done=1;return;}prefix=frame_prefix;}
     char path[1024];FILE*f;unsigned files=0,errors=0;
-    for(unsigned i=0;i<s_point_capture.ring.count;i++){
-        const PbPointCaptureSlot*slot=pb_point_ring_at(&s_point_capture.ring,i);
+    for(unsigned i=0;i<capture->ring.count;i++){
+        const PbPointCaptureSlot*slot=pb_point_ring_at(&capture->ring,i);
         size_t at=0,bytes;const char*name;const unsigned char*data;
         while(pb_point_file_next(slot->data,slot->bytes,&at,&name,&data,&bytes)){
-            if(snprintf(path,sizeof path,"%s-%u-%s",s_point_capture.prefix,i,name)>=(int)sizeof path){errors++;continue;}
+            if(snprintf(path,sizeof path,"%s-%u-%s",prefix,i,name)>=(int)sizeof path){errors++;continue;}
             f=fopen(path,"wb");if(!f){errors++;continue;}
             int ok=fwrite(data,1,bytes,f)==bytes;if(fclose(f))ok=0;
             if(ok)files++;else errors++;
         }
         if(at!=slot->bytes)errors++;
     }
-    if(snprintf(path,sizeof path,"%s-manifest.txt",s_point_capture.prefix)<(int)sizeof path&&(f=fopen(path,"wb"))){
-        fprintf(f,"author=djultra64 flip=%u sample_center=%g,%g draws=%llu hits=%llu manifest_dropped=%llu payload_failed=%llu retained=%u retained_bytes=%zu evicted=%llu oversize=%llu allocation_failed=%llu invalid=%llu files=%u errors=%u\n",
-            s_point_capture.flip,s_point_capture.x+.5,s_point_capture.y+.5,(unsigned long long)s_point_capture.draws,(unsigned long long)s_point_capture.hits,
-            (unsigned long long)s_point_capture.manifest_dropped,(unsigned long long)s_point_capture.payload_failed,s_point_capture.ring.count,s_point_capture.ring.bytes,
-            (unsigned long long)s_point_capture.ring.evicted,(unsigned long long)s_point_capture.ring.oversize,(unsigned long long)s_point_capture.ring.allocation_failed,(unsigned long long)s_point_capture.ring.invalid,files,errors);
+    if(snprintf(path,sizeof path,"%s-manifest.txt",prefix)<(int)sizeof path&&(f=fopen(path,"wb"))){
+        fprintf(f,"author=djultra64 flip=%u sample_center=%g,%g draws=%llu hits=%llu manifest_dropped=%llu payload_failed=%llu retained=%u retained_bytes=%zu evicted=%llu oversize=%llu allocation_failed=%llu invalid=%llu files=%u errors=%u budget_dropped=%llu total_payload_bytes=%zu capture_kind=%s\n",
+            capture->flip,capture->x+.5,capture->y+.5,(unsigned long long)capture->draws,(unsigned long long)capture->hits,
+            (unsigned long long)capture->manifest_dropped,(unsigned long long)capture->payload_failed,capture->ring.count,capture->ring.bytes,
+            (unsigned long long)capture->ring.evicted,(unsigned long long)capture->ring.oversize,(unsigned long long)capture->ring.allocation_failed,(unsigned long long)capture->ring.invalid,files,errors,(unsigned long long)capture->budget_dropped,s_hair_total_bytes,hair?"hair":"point");
         static const char*reason[8]={"geometry_limit","allocation","oracle_unavailable","primitive","index","nonfinite_or_W_crossing","guest_texture_range","reserved"};
-        for(unsigned i=0;i<8;i++)fprintf(f,"unresolved_%s=%llu\n",reason[i],(unsigned long long)s_point_capture.unresolved[i]);
-        for(unsigned i=0;i<s_point_capture.manifest_count;i++)fprintf(f,"%s\n",s_point_capture.manifest[i]);
-        for(unsigned i=0;i<s_point_capture.ring.count;i++){const PbPointCaptureSlot*slot=pb_point_ring_at(&s_point_capture.ring,i);fprintf(f,"retained_slot=%u hit=%llu bytes=%zu\n",i,(unsigned long long)slot->sequence,slot->bytes);}
+        for(unsigned i=0;i<8;i++)fprintf(f,"unresolved_%s=%llu\n",reason[i],(unsigned long long)capture->unresolved[i]);
+        for(unsigned i=0;i<capture->manifest_count;i++)fprintf(f,"%s\n",capture->manifest[i]);
+        for(unsigned i=0;i<capture->ring.count;i++){const PbPointCaptureSlot*slot=pb_point_ring_at(&capture->ring,i);fprintf(f,"retained_slot=%u hit=%llu bytes=%zu\n",i,(unsigned long long)slot->sequence,slot->bytes);}
         if(ferror(f))errors++;if(fclose(f))errors++;
     }else errors++;
-    fprintf(stderr,"[POINT-CAPTURE] prefix=%s flip=%u hits=%llu retained=%u overwritten=%llu manifest_dropped=%llu errors=%u\n",s_point_capture.prefix,s_point_capture.flip,(unsigned long long)s_point_capture.hits,s_point_capture.ring.count,(unsigned long long)s_point_capture.ring.evicted,(unsigned long long)s_point_capture.manifest_dropped,errors);
-    pb_point_ring_clear(&s_point_capture.ring);s_point_capture.done=1;
+    fprintf(stderr,"[%s-CAPTURE] prefix=%s flip=%u hits=%llu retained=%u overwritten=%llu manifest_dropped=%llu errors=%u\n",hair?"HAIR":"POINT",prefix,capture->flip,(unsigned long long)capture->hits,capture->ring.count,(unsigned long long)capture->ring.evicted,(unsigned long long)capture->manifest_dropped,errors);
+    if(hair){
+        s_hair_completed_flip=capture->flip;
+        s_hair_completed_pending=capture->ring.count>0 && errors==0;
+        pb_hair_schedule_complete(&s_hair_schedule);
+    }
+    pb_point_ring_clear(&capture->ring);
+    if(hair){const char*saved=capture->prefix;memset(capture,0,sizeof *capture);capture->initialized=1;capture->enabled=1;capture->prefix=saved;capture->ring.limit_bytes=PB_HAIR_CAPTURE_FRAME_BYTES;capture->done=s_hair_schedule.completed>=PB_HAIR_CAPTURE_FRAMES;}
+    else capture->done=1;
 }
-static void point_capture_payload(const float*vertices,uint32_t nverts,uint32_t used,
+static void draw_capture_payload(PbDrawCapture*capture,int hair,const float*vertices,uint32_t nverts,uint32_t used,
                                   const uint16_t*indices,uint32_t nindices,
                                   const PgraphReadyVertex*ready,uint32_t count,int program_mode,int rhw_rebase_exponent)
 {
-    if(!point_capture_on()||s_gpu.flips<s_point_capture.min_flip)return;
+    if(!hair&&(!point_capture_on()||s_gpu.flips<capture->min_flip))return;
     int gpu=vertices!=NULL;const char*path=gpu?"gpu":program_mode?"cpu_vsh":"fixed";
     if(!s_gpu.color_offset||(s_gpu.format&255u)!=0x28u)return;
-    if(!s_point_capture.active){s_point_capture.active=1;s_point_capture.flip=s_gpu.flips;}
-    if(s_gpu.flips!=s_point_capture.flip)return;
-    s_point_capture.draws++;
-    if((gpu&&(!nverts||nverts>4096||!nindices||nindices>12288))||(!gpu&&(!count||count>4096))){s_point_capture.unresolved[0]++;return;}
+    if(!capture->active){capture->active=1;capture->flip=s_gpu.flips;}
+    if(s_gpu.flips!=capture->flip)return;
+    capture->draws++;
+    if(hair&&capture->ring.count>=PB_HAIR_CAPTURE_DRAWS){capture->budget_dropped++;return;}
+    const uint32_t vertex_limit=hair?8192u:4096u,index_limit=hair?24576u:12288u;
+    if((gpu&&(!nverts||nverts>vertex_limit||!nindices||nindices>index_limit))||(!gpu&&(!count||count>vertex_limit))){capture->unresolved[0]++;return;}
     PbPointCaptureState state={s_gpu.clip_x,s_gpu.clip_y,s_gpu.clip_w,s_gpu.clip_h,
         ((s_gpu.format>>4)&15u)==1u?65535.:16777215.,RS(0x308),RS(0x3A0),RS(0x39C)};
-    double px=s_point_capture.x+.5,py=s_point_capture.y+.5;
-    if(px<state.clip_x||py<state.clip_y||px>=state.clip_x+state.clip_width||py>=state.clip_y+state.clip_height)return;
+    double px=capture->x+.5,py=capture->y+.5;
+    if(!hair&&(px<state.clip_x||py<state.clip_y||px>=state.clip_x+state.clip_width||py>=state.clip_y+state.clip_height))return;
     uint32_t nv=gpu?nverts:count,ni=gpu?nindices:0,per=0,first=UINT32_MAX,hits=0;
     uint16_t *tri=NULL;Nv2aVshOutput*oracle=NULL;float(*positions)[4]=NULL;
     float(*raw)[16][4]=NULL;char metadata[8192];size_t meta_bytes=0;uint32_t revision=0,start=0,version=0;
     const Nv2aVshInstruction*program=NULL;const float*constants=NULL;
     for(unsigned a=0;a<16;a++)per+=(used>>a)&1u;if(!per)per=1;
-    positions=malloc((size_t)nv*sizeof *positions);if(!positions){s_point_capture.unresolved[1]++;goto done;}
+    positions=malloc((size_t)nv*sizeof *positions);if(!positions){capture->unresolved[1]++;goto done;}
     if(program_mode){program=nv2a_vsh_program_data(&revision,&start);constants=nv2a_vsh_constants(&version);}
     if(gpu){
-        int writes=0;nv2a_vsh_inputs_used(&writes);if(writes){s_point_capture.unresolved[2]++;goto done;}
-        oracle=calloc(nv,sizeof *oracle);if(!oracle){s_point_capture.unresolved[1]++;goto done;}
+        int writes=0;nv2a_vsh_inputs_used(&writes);if(writes){capture->unresolved[2]++;goto done;}
+        oracle=calloc(nv,sizeof *oracle);if(!oracle){capture->unresolved[1]++;goto done;}
         program=nv2a_vsh_program_data(&revision,&start);constants=nv2a_vsh_constants(&version);
         for(uint32_t i=0;i<nv;i++){
             float in[16][4]={{0}};unsigned off=0;
             for(unsigned a=0;a<16;a++){in[a][3]=1;if((used>>a)&1u){memcpy(in[a],vertices+(size_t)i*per*4+off,16);off+=4;}}
-            if(!nv2a_vsh_run((const float(*)[4])in,&oracle[i])){s_point_capture.unresolved[2]++;goto done;}
+            if(!nv2a_vsh_run((const float(*)[4])in,&oracle[i])){capture->unresolved[2]++;goto done;}
             memcpy(positions[i],oracle[i].pos,16);
         }
     }else{
         for(uint32_t i=0;i<nv;i++){positions[i][0]=ready[i].x;positions[i][1]=ready[i].y;positions[i][2]=ready[i].z;positions[i][3]=ready[i].w;}
-        tri=malloc((size_t)nv*3*sizeof *tri);if(!tri){s_point_capture.unresolved[1]++;goto done;}
+        tri=malloc((size_t)nv*3*sizeof *tri);if(!tri){capture->unresolved[1]++;goto done;}
 #define POINT_TRI(a,b,c) do{tri[ni++]=(uint16_t)(a);tri[ni++]=(uint16_t)(b);tri[ni++]=(uint16_t)(c);}while(0)
         switch(s_gpu.prim){
         case 5:for(uint32_t i=0;i+2<nv;i+=3)POINT_TRI(i,i+1,i+2);break;
@@ -3703,39 +3724,46 @@ static void point_capture_payload(const float*vertices,uint32_t nverts,uint32_t 
         case 7:case 10:for(uint32_t i=1;i+1<nv;i++)POINT_TRI(0,i,i+1);break;
         case 8:for(uint32_t i=0;i+3<nv;i+=4){POINT_TRI(i,i+1,i+2);POINT_TRI(i,i+2,i+3);}break;
         case 9:for(uint32_t i=0;i+3<nv;i+=2){POINT_TRI(i,i+1,i+3);POINT_TRI(i,i+3,i+2);}break;
-        default:s_point_capture.unresolved[3]++;goto done;
+        default:capture->unresolved[3]++;goto done;
         }
 #undef POINT_TRI
         indices=tri;
     }
     double bbox[4]={1e30,-1e30,1e30,-1e30},first_z=0;
     for(uint32_t i=0;i<nv;i++){if(isfinite(positions[i][0])){if(positions[i][0]<bbox[0])bbox[0]=positions[i][0];if(positions[i][0]>bbox[1])bbox[1]=positions[i][0];}if(isfinite(positions[i][1])){if(positions[i][1]<bbox[2])bbox[2]=positions[i][1];if(positions[i][1]>bbox[3])bbox[3]=positions[i][1];}}
-    for(uint32_t i=0;i+2<ni;i+=3){
+    if(!hair)for(uint32_t i=0;i+2<ni;i+=3){
         float p[3][4];int valid=1;for(unsigned j=0;j<3;j++){if(indices[i+j]>=nv){valid=0;break;}memcpy(p[j],positions[indices[i+j]],16);}
-        if(!valid){s_point_capture.unresolved[4]++;continue;}
+        if(!valid){capture->unresolved[4]++;continue;}
         /* draw_ready clamps vertex depth before interpolation; mirror that
          * coverage contract without changing the captured raw positions. */
         if(!gpu)for(unsigned j=0;j<3;j++)if(isfinite(p[j][2]))p[j][2]=p[j][2]<0?0:p[j][2]>state.zmax?(float)state.zmax:p[j][2];
         double z;PbPointCaptureResult result=pb_point_triangle((const float(*)[4])p,px,py,&state,&z);
-        if(result==PB_POINT_W_CROSSING||result==PB_POINT_NONFINITE)s_point_capture.unresolved[5]++;
+        if(result==PB_POINT_W_CROSSING||result==PB_POINT_NONFINITE)capture->unresolved[5]++;
         if(result==PB_POINT_HIT){if(first==UINT32_MAX){first=i/3;first_z=z;}hits++;}
     }
+    if(hair){hits=1;first=UINT32_MAX;}
     if(!hits)goto done;
-    uint64_t hit=++s_point_capture.hits;
-    char*line=s_point_capture.manifest_count<PB_POINT_CAPTURE_MANIFEST_LIMIT?s_point_capture.manifest[s_point_capture.manifest_count++]:NULL;
+    uint64_t hit=++capture->hits;
+    char*line=capture->manifest_count<PB_POINT_CAPTURE_MANIFEST_LIMIT?capture->manifest[capture->manifest_count++]:NULL;
     if(line)snprintf(line,768,"hit=%llu draw=%u history_sequence=%llu path=%s primitive=%u vertices=%u indices=%u triangles_at_sample=%u first_triangle=%u surface=%08X format=%08X shader=%05X t0=%08X blend=%u/%X/%X depth=%u/%X/%u cull=%u/%X/%X bbox=%g,%g,%g,%g sample_z=%g",
         (unsigned long long)hit,s_gpu.draws,(unsigned long long)s_history_sequence,path,s_gpu.prim,nv,ni,hits,first,s_gpu.color_offset,s_gpu.format,s_gpu.rc.stage_program,s_gpu.texs[0].offset,s_gpu.blend_enable,s_gpu.blend_sfactor,s_gpu.blend_dfactor,s_gpu.depth_test,s_gpu.depth_func,s_gpu.depth_mask,RS(0x308),RS(0x39C),RS(0x3A0),bbox[0],bbox[1],bbox[2],bbox[3],first_z);
-    else s_point_capture.manifest_dropped++;
-    if(!gpu){raw=calloc(nv,sizeof *raw);if(!raw){s_point_capture.payload_failed++;goto done;}}
+    else capture->manifest_dropped++;
+    if(!gpu){raw=calloc(nv,sizeof *raw);if(!raw){capture->payload_failed++;goto done;}}
     if(!gpu)for(uint32_t i=0;i<nv;i++)for(unsigned a=0;a<16;a++){
         if(!fetch_attr(&s_gpu.attr[a],s_gpu.idx[i],raw[i][a]))nv2a_vsh_current((int)a,raw[i][a]);
     }
     int written=snprintf(metadata,sizeof metadata,"point_capture_version=2\nready_stride_bytes=32\nauthor=djultra64\nhit=%llu\nflip=%u\ndraw=%u\npath=%s\nprimitive=%u\nnverts=%u\nnindices=%u\nused=%08X\nvertex_stride_floats=%u\npoint_hits=%u first_triangle=%u sample_center=%g,%g\nsurface=%08X zeta=%08X format=%08X pitches=%u/%u clip=%u,%u,%u,%u\nxf_mode=%08X fixed_written=%04X\nprogram_hash=%08X program_start=%u program_revision=%u constant_revision=%u\ntexture_bytes_source=guest_CPU_not_live_GPU\npacked_rhw_rebase_exponent=%d\n",
         (unsigned long long)hit,s_gpu.flips,s_gpu.draws,path,s_gpu.prim,nv,ni,used,per*4,hits,first,px,py,s_gpu.color_offset,s_gpu.zeta_offset,s_gpu.format,s_gpu.pitch,s_gpu.zeta_pitch,s_gpu.clip_x,s_gpu.clip_y,s_gpu.clip_w,s_gpu.clip_h,s_gpu.xf_mode,s_gpu.fixed_composite_written,program_mode?nv2a_vsh_program_hash():0,start,revision,version,rhw_rebase_exponent);
-    if(written<0||(size_t)written>=sizeof metadata){s_point_capture.payload_failed++;goto done;}meta_bytes=(size_t)written;
+    if(written<0||(size_t)written>=sizeof metadata){capture->payload_failed++;goto done;}meta_bytes=(size_t)written;
     written=snprintf(metadata+meta_bytes,sizeof metadata-meta_bytes,"fog_enable=%u fog_mode=%X fog_color_abgr=%08X fog_bias=%a fog_multiplier=%a fog_gen=%u fog_plane=%a,%a,%a,%a\n",s_gpu.fog_enable,s_gpu.fog_mode,s_gpu.fog_color,(double)s_gpu.fog_param[0],(double)s_gpu.fog_param[1],s_gpu.fog_gen,(double)s_gpu.fog_plane[0],(double)s_gpu.fog_plane[1],(double)s_gpu.fog_plane[2],(double)s_gpu.fog_plane[3]);
-    if(written<0||(size_t)written>=sizeof metadata-meta_bytes){s_point_capture.payload_failed++;goto done;}meta_bytes+=(size_t)written;
+    if(written<0||(size_t)written>=sizeof metadata-meta_bytes){capture->payload_failed++;goto done;}meta_bytes+=(size_t)written;
     if(line){size_t len=strlen(line);snprintf(line+len,768-len," fog=%u/%X/%08X/%a/%a/gen%u",s_gpu.fog_enable,s_gpu.fog_mode,s_gpu.fog_color,(double)s_gpu.fog_param[0],(double)s_gpu.fog_param[1],s_gpu.fog_gen);}
+    written=snprintf(metadata+meta_bytes,sizeof metadata-meta_bytes,"capture_kind=%s point_coverage_evaluated=%u\nalpha_test=%u func=%X ref=%u blend=%u factors=%X/%X eq=%X depth=%u func=%X write=%u stencil=%u func=%X cull=%u face=%X front=%X\n",hair?"hair_draw":"point",!hair,s_gpu.alpha_test,s_gpu.alpha_func,s_gpu.alpha_ref,s_gpu.blend_enable,s_gpu.blend_sfactor,s_gpu.blend_dfactor,s_gpu.blend_equation,s_gpu.depth_test,s_gpu.depth_func,s_gpu.depth_mask,RS(0x32C),RS(0x364),RS(0x308),RS(0x39C),RS(0x3A0));
+    if(written<0||(size_t)written>=sizeof metadata-meta_bytes){capture->payload_failed++;goto done;}meta_bytes+=(size_t)written;
+    for(unsigned a=0;a<4;a++){const Texture*t=&s_gpu.texs[a];uint32_t ctl=s_gpu.texture_control[a];
+        written=snprintf(metadata+meta_bytes,sizeof metadata-meta_bytes,"texture%u=%08X size=%ux%u format=%02X levels=%u filter=%08X control=%08X min_lod=%u max_lod=%u valid=%d disabled=%d address=%X/%X cube=%d raw_bytes=%llu\n",a,t->offset,t->width,t->height,t->color,t->levels,t->filter,ctl,(ctl>>18)&0xfffu,(ctl>>6)&0xfffu,t->valid,t->disabled,t->addr_u,t->addr_v,t->cube,(unsigned long long)(t->valid?(uint64_t)tex_face_stride(t)*(t->cube?6:1):0));
+        if(written<0||(size_t)written>=sizeof metadata-meta_bytes){capture->payload_failed++;goto done;}meta_bytes+=(size_t)written;
+    }
     struct PointFile{const char*name;const void*data;size_t bytes;} files[24];unsigned nf=0;
 #define POINT_FILE(n,p,b) do{files[nf++]=(struct PointFile){n,p,b};}while(0)
     POINT_FILE("state.txt",metadata,meta_bytes);POINT_FILE("indices.u16",indices,(size_t)ni*2);
@@ -3755,17 +3783,53 @@ static void point_capture_payload(const float*vertices,uint32_t nverts,uint32_t 
     for(unsigned a=0;a<4;a++){
         const Texture*t=&s_gpu.texs[a];uint64_t bytes=t->valid?(uint64_t)tex_face_stride(t)*(t->cube?6:1):0;
         if(!bytes)continue;
-        if(bytes>PB_POINT_CAPTURE_BUDGET||!((t->offset>=0x10000u&&(uint64_t)t->offset+bytes<=0x4000000ull)||(t->offset>=0x80000000u&&(uint64_t)t->offset+bytes<=0x84000000ull))){s_point_capture.unresolved[6]++;continue;}
+        if(bytes>PB_POINT_CAPTURE_BUDGET||!((t->offset>=0x10000u&&(uint64_t)t->offset+bytes<=0x4000000ull)||(t->offset>=0x80000000u&&(uint64_t)t->offset+bytes<=0x84000000ull))){capture->unresolved[6]++;continue;}
         snprintf(suffix[a],sizeof suffix[a],"texture%u.raw",a);POINT_FILE(suffix[a],(const unsigned char*)xbox_GetMemoryOffset()+t->offset,(size_t)bytes);
     }
 #undef POINT_FILE
     size_t total=0;for(unsigned i=0;i<nf;i++){size_t n=pb_point_file_size(files[i].name,files[i].bytes);if(!n||n>PB_POINT_CAPTURE_BUDGET-total){total=PB_POINT_CAPTURE_BUDGET+1u;break;}total+=n;}
-    unsigned char*blob=pb_point_ring_begin(&s_point_capture.ring,total);
-    if(!blob){s_point_capture.payload_failed++;goto done;}
+    if(hair&&!pb_hair_payload_fits(capture->ring.bytes,capture->ring.count,total,s_hair_total_bytes)){capture->budget_dropped++;goto done;}
+    unsigned char*blob=pb_point_ring_begin(&capture->ring,total);
+    if(!blob){capture->payload_failed++;goto done;}
     size_t at=0;int ok=1;for(unsigned i=0;i<nf;i++)if(!pb_point_file_append(blob,total,&at,files[i].name,files[i].data,files[i].bytes))ok=0;
-    if(!ok||at!=total){pb_point_ring_cancel(&s_point_capture.ring);s_point_capture.payload_failed++;}else pb_point_ring_commit(&s_point_capture.ring,hit);
+    if(!ok||at!=total){pb_point_ring_cancel(&capture->ring);capture->payload_failed++;}else {pb_point_ring_commit(&capture->ring,hit);if(hair)s_hair_total_bytes+=total;}
 done:
     free(raw);free(positions);free(oracle);free(tri);
+}
+
+static int hair_capture_on(void)
+{
+    PbDrawCapture*c=&s_hair_capture;
+    if(!c->initialized){
+        c->initialized=1;c->prefix=getenv("RECOMP_HAIR_CAPTURE_PREFIX");
+        c->enabled=c->prefix&&*c->prefix;c->ring.limit_bytes=PB_HAIR_CAPTURE_FRAME_BYTES;
+        s_hair_schedule.min_flip=1000;
+        if(c->enabled){const char*e=getenv("RECOMP_HAIR_CAPTURE_MIN_FLIP");char*end;unsigned long n;
+            if(e&&*e){n=strtoul(e,&end,10);if(!*end&&n<=UINT32_MAX)s_hair_schedule.min_flip=(uint32_t)n;}}
+    }
+    return c->enabled&&!c->done;
+}
+/* Pure metadata query in the synchronous post-Present callback. The executor
+ * may increment FLIP_WRITE before STALL; return the payload flip explicitly,
+ * without assuming it equals the host's frame number. */
+int nv2a_pb_hair_capture_completed_frame(uint32_t *gpu_flip)
+{
+    if(!s_hair_completed_pending)return 0;
+    if(gpu_flip)*gpu_flip=s_hair_completed_flip;
+    return 1;
+}
+static void hair_capture_payload(const float*vertices,uint32_t nverts,uint32_t used,
+    const uint16_t*indices,uint32_t nindices,const PgraphReadyVertex*ready,
+    uint32_t count,int program_mode,int rhw_rebase_exponent)
+{
+    if(!hair_capture_on()||!program_mode)return;
+    const Texture*t=&s_gpu.texs[0];
+    PbHairDrawState d={nv2a_vsh_program_hash(),s_gpu.color_offset,s_gpu.format,s_gpu.pitch,
+        s_gpu.clip_x,s_gpu.clip_y,s_gpu.clip_w,s_gpu.clip_h,s_gpu.alpha_test,s_gpu.alpha_func,s_gpu.alpha_ref,
+        (uint32_t)(t->valid&&!t->disabled),t->color,t->width,t->height};
+    if(!pb_hair_draw_match(&d))return;
+    if(!s_hair_capture.active&&!pb_hair_schedule_due(&s_hair_schedule,s_gpu.flips))return;
+    draw_capture_payload(&s_hair_capture,1,vertices,nverts,used,indices,nindices,ready,count,program_mode,rhw_rebase_exponent);
 }
 
 /* Keep a depth-only shadow pass away from the main depth attachment. Surface
@@ -4426,7 +4490,8 @@ static void draw_primitive(void)
                             ((s_gpu.format >> 4) & 15u) == 1u
                                 ? 1.0f / 65535.0f : 1.0f / 16777215.0f,
                             &rhw_rebase_exponent);
-                    if(point_capture_on())point_capture_payload(gv,gnv,used,gtri,gnt,NULL,0,vsh,rhw_rebase_exponent);
+                    if(point_capture_on())draw_capture_payload(&s_point_capture,0,gv,gnv,used,gtri,gnt,NULL,0,vsh,rhw_rebase_exponent);
+                    hair_capture_payload(gv,gnv,used,gtri,gnt,NULL,0,vsh,rhw_rebase_exponent);
                     crowd_capture_payload(gv, gnv, used, gtri, gnt);
                     stadium_capture_payload(gv, gnv, used, gtri, gnt);
                     pgraph_d3d11_set_point_mode(s_gpu.prim == 1, s_point_size);
@@ -4470,7 +4535,8 @@ static void draw_primitive(void)
                     pgraph_d3d11_set_point_mode(0, 0.0f);
                 }
                 else if (n >= 3) {
-                    if(point_capture_on())point_capture_payload(NULL,0,used,NULL,0,ready,n,vsh,0);
+                    if(point_capture_on())draw_capture_payload(&s_point_capture,0,NULL,0,used,NULL,0,ready,n,vsh,0);
+                    hair_capture_payload(NULL,0,used,NULL,0,ready,n,vsh,0);
                     if(!vsh)movie_trace_ready(ready,n);
                     pgraph_d3d11_draw_ready(s_gpu.prim, ready, n);
                 }
@@ -5200,7 +5266,8 @@ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
         return;
 
     case NV097_FLIP_INCREMENT_WRITE:
-        point_capture_finish();
+        if(point_capture_on())draw_capture_finish(&s_point_capture,0);
+        if(hair_capture_on())draw_capture_finish(&s_hair_capture,1);
         s_gpu.flip_write = s_gpu.flip_modulo
                          ? (s_gpu.flip_write + 1) % s_gpu.flip_modulo
                          : s_gpu.flip_write + 1;
@@ -5214,7 +5281,8 @@ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
         return;
 
     case NV097_FLIP_STALL:
-        point_capture_finish();
+        if(point_capture_on())draw_capture_finish(&s_point_capture,0);
+        if(hair_capture_on())draw_capture_finish(&s_hair_capture,1);
         if (s_ftrace == 2)
             fprintf(stderr, "[FTRACE] FLIP_STALL presenting %08X (color now %08X)%c",
                     s_gpu.drawn_offset, s_gpu.color_offset, 10);
@@ -5308,6 +5376,7 @@ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
                 history_record(PB_HISTORY_PRESENT,NV097_FLIP_STALL,completed_color,1);
                 pgraph_d3d11_frame_end();
                 history_present_complete();
+                s_hair_completed_pending=0;
             }
         }
         if (pb_exec_verbose()) {

@@ -12,6 +12,7 @@
 #include <string.h>
 #if !defined(_WIN32)
 #include <fcntl.h>
+#include <stdatomic.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -22,7 +23,7 @@ static void le32(unsigned char *p,uint32_t v) { for(unsigned i=0;i<4;i++)p[i]=(u
 /* This runtime's sf_LockRect explicitly returns RGBA bytes, even though
  * GetDesc names A8R8G8B8. See d3d8_vk.c's backbuffer implementation. BMP BI_RGB
  * stores BGRA; use top-down rows and preserve RGB exactly with opaque alpha. */
-static int write_bmp(const char *path,const D3DSURFACE_DESC *desc,const D3DLOCKED_RECT *lock)
+static int write_bmp(const char *path,const D3DSURFACE_DESC *desc,const D3DLOCKED_RECT *lock,int exclusive)
 {
     uint64_t rowbytes=(uint64_t)desc->Width*4,bytes=rowbytes*desc->Height;
     unsigned char header[54]={0},*row;
@@ -37,7 +38,15 @@ static int write_bmp(const char *path,const D3DSURFACE_DESC *desc,const D3DLOCKE
         return 0;
     row=malloc((size_t)rowbytes);
     if(!row)return 0;
-    f=fopen(temporary,"wb");
+    if(exclusive){
+#if !defined(_WIN32)
+        int fd=open(temporary,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
+        f=fd<0?NULL:fdopen(fd,"wb");
+        if(fd>=0&&!f){close(fd);remove(temporary);}
+#else
+        free(row);return 0; /* Replay event captures are POSIX-only. */
+#endif
+    }else f=fopen(temporary,"wb");
     if(!f){free(row);return 0;}
     header[0]='B';header[1]='M';le32(header+2,(uint32_t)bytes+54);le32(header+10,54);
     le32(header+14,40);le32(header+18,desc->Width);le32(header+22,0u-desc->Height);
@@ -52,14 +61,21 @@ static int write_bmp(const char *path,const D3DSURFACE_DESC *desc,const D3DLOCKE
     }
     if(fclose(f))ok=0;
     free(row);
-    if(ok && rename(temporary,path))ok=0;
+    if(exclusive){
+#if !defined(_WIN32)
+        /* link is atomic and fails on an existing destination; unlike rename,
+         * it cannot replace an earlier screenshot or follow a symlink. */
+        if(ok && link(temporary,path))ok=0;
+        remove(temporary);
+#endif
+    }else if(ok && rename(temporary,path))ok=0;
     if(!ok)remove(temporary);
     return ok;
 }
 
 
-static int capture_backbuffer(IDirect3DDevice8 *device,const char *path,
-                              D3DSURFACE_DESC *desc,HRESULT *api_result)
+static int capture_backbuffer_limited(IDirect3DDevice8 *device,const char *path,
+                              D3DSURFACE_DESC *desc,HRESULT *api_result,int exclusive,uint64_t limit)
 {
     IDirect3DSurface8 *surface=NULL;
     D3DLOCKED_RECT lock={0};
@@ -68,15 +84,88 @@ static int capture_backbuffer(IDirect3DDevice8 *device,const char *path,
     HRESULT result=device->lpVtbl->GetBackBuffer(device,0,0,&surface);
     if(result>=0 && surface){
         result=surface->lpVtbl->GetDesc(surface,desc);
+        if(result>=0 && limit && (desc->Width>4096 || desc->Height>4096 ||
+           (uint64_t)desc->Width*desc->Height*4u+54u>limit))
+            result=(HRESULT)0x80004005u;
         if(result>=0){
             result=surface->lpVtbl->LockRect(surface,&lock,NULL,D3DLOCK_READONLY);
-            if(result>=0){locked=1;ok=write_bmp(path,desc,&lock);}
+            if(result>=0){locked=1;ok=write_bmp(path,desc,&lock,exclusive);}
         }
         if(locked)surface->lpVtbl->UnlockRect(surface);
         surface->lpVtbl->Release(surface);
     }
     *api_result=result;return ok;
 }
+static int capture_backbuffer(IDirect3DDevice8 *device,const char *path,
+                              D3DSURFACE_DESC *desc,HRESULT *api_result,int exclusive)
+{
+    return capture_backbuffer_limited(device,path,desc,api_result,exclusive,0);
+}
+
+/* The guest CPU publishes only bounded counters, never guest memory addresses.
+ * The GPU executor owns readback, filename state, attempts and history output. */
+#if !defined(_WIN32)
+static atomic_int replay_enabled=ATOMIC_VAR_INIT(-1);
+static atomic_uint replay_views=ATOMIC_VAR_INIT(0),replay_pending=ATOMIC_VAR_INIT(0);
+static const unsigned replay_thresholds[]={1,4,16,64,128,256};
+static int replay_capture_on(void)
+{
+    int enabled=atomic_load_explicit(&replay_enabled,memory_order_relaxed);
+    if(enabled<0){
+        const char *gate=getenv("TOPSPIN_REPLAY_RENDER_CAPTURE");
+        enabled=gate&&!strcmp(gate,"1");
+        atomic_store_explicit(&replay_enabled,enabled,memory_order_relaxed);
+    }
+    return enabled;
+}
+void topspin_frame_capture_replay_view(void)
+{
+    if(!replay_capture_on())return;
+    unsigned view=atomic_load_explicit(&replay_views,memory_order_relaxed);
+    do{if(view>=256)return;}
+    while(!atomic_compare_exchange_weak_explicit(&replay_views,&view,view+1,
+                                                memory_order_relaxed,memory_order_relaxed));
+    view++;
+    for(unsigned i=0;i<sizeof replay_thresholds/sizeof *replay_thresholds;i++)
+        if(view==replay_thresholds[i]){
+            atomic_fetch_or_explicit(&replay_pending,1u<<i,memory_order_release);
+            break;
+        }
+}
+static void capture_replay_after_present(IDirect3DDevice8 *device,uint64_t elapsed_ns,uint64_t frame)
+{
+    static int initialized,enabled;static unsigned attempts;static char prefix[768];
+    if(!replay_capture_on()||!device||attempts>=6)return;
+    unsigned pending=atomic_exchange_explicit(&replay_pending,0,memory_order_acquire);
+    if(!pending)return;
+    if(!initialized){
+        initialized=1;const char *p=getenv("TOPSPIN_CAPTURE_PREFIX");
+        if(!p||p[0]!='/'||strlen(p)>=sizeof prefix){
+            fputs("[REPLAY-RENDER-CAPTURE] invalid absolute capture prefix; disabled\n",stderr);return;
+        }
+        memcpy(prefix,p,strlen(p)+1);enabled=1;
+    }
+    if(!enabled)return;
+    unsigned view=0;
+    for(unsigned i=0;i<sizeof replay_thresholds/sizeof *replay_thresholds;i++)
+        if(pending&(1u<<i))view=replay_thresholds[i];
+    attempts++; /* Failures consume a bounded attempt; no repeated API/IO loop. */
+    char path[1024];D3DSURFACE_DESC desc={0};HRESULT result=0;
+    snprintf(path,sizeof path,"%s-replay-view%06u-frame%08llu.bmp",prefix,view,(unsigned long long)frame);
+    int ok=capture_backbuffer(device,path,&desc,&result,1);
+    fprintf(stderr,"[REPLAY-RENDER-CAPTURE] %s %s view=%u coalesced_mask=%02X attempt=%u actual=%.3fs frame=%llu size=%ux%u format=%08X api=%08X\n",
+            ok?"saved":"FAILED",path,view,pending,attempts,(double)elapsed_ns/1e9,
+            (unsigned long long)frame,desc.Width,desc.Height,(unsigned)desc.Format,(unsigned)result);
+    /* Synchronous post-Present history belongs to the same completed image.
+     * Keep it even if readback/file creation failed, to retain that evidence. */
+    extern void nv2a_pb_dump_present_history(uint64_t,uint64_t);
+    nv2a_pb_dump_present_history(frame,elapsed_ns);
+}
+#else
+void topspin_frame_capture_replay_view(void) { }
+static void capture_replay_after_present(IDirect3DDevice8 *device,uint64_t elapsed_ns,uint64_t frame)
+{ (void)device;(void)elapsed_ns;(void)frame; }
+#endif
 
 /* Optional app-local requests; all state belongs to this GPU executor thread.
  * Request counters are unrelated to game clocks, frames or guest input. */
@@ -126,7 +215,7 @@ static void capture_request_after_present(IDirect3DDevice8 *device,uint64_t elap
  last=value;attempts++; /* consume before API/write failure: never retry same request */
  char output[1024];D3DSURFACE_DESC desc={0};HRESULT result=0;
  snprintf(output,sizeof output,"%s-request%08llu.bmp",prefix,(unsigned long long)value);
- int ok=capture_backbuffer(device,output,&desc,&result);
+ int ok=capture_backbuffer(device,output,&desc,&result,0);
  fprintf(stderr,"[FRAME-CAPTURE-REQUEST] %s %s counter=%llu attempt=%u actual=%.3fs frame=%llu size=%ux%u format=%08X api=%08X\n",ok?"saved":"FAILED",output,(unsigned long long)value,attempts,(double)elapsed_ns/1e9,(unsigned long long)frame,desc.Width,desc.Height,(unsigned)desc.Format,(unsigned)result);
  return;
 rejected:
@@ -134,6 +223,146 @@ rejected:
 }
 #else
 static void capture_request_after_present(IDirect3DDevice8 *device,uint64_t elapsed_ns,uint64_t frame)
+{ (void)device;(void)elapsed_ns;(void)frame; }
+#endif
+
+/* Independent, defaultOFF capture of actual live procedural crowd images.
+ * No pixel, stadium or hardcoded guest allocation selects an atlas. */
+#if !defined(_WIN32)
+extern int d3d8_vk_rt_diagnostic_rgb565(uint32_t *,uint32_t,uint32_t *) __attribute__((weak));
+extern int nv2a_pb_hair_capture_completed_frame(uint32_t *) __attribute__((weak));
+enum { CROWD_ATLASES=64,CROWD_SNAPSHOTS=12,CROWD_QUERIES=4096,CROWD_PIXELS=64*128*4 };
+#define CROWD_RAW_BUDGET (UINT64_C(25)*1024*1024)
+#define CROWD_BMP_BUDGET (UINT64_C(400)*1024*1024)
+#define CROWD_BMP_SINGLE (UINT64_C(64)*1024*1024)
+static int crowd_decimal(const char *value,uint64_t *out)
+{
+    if(!value || value[0]<'1'||value[0]>'9')return 0;
+    uint64_t number=0;
+    for(const unsigned char *p=(const unsigned char*)value;*p;p++) {
+        if(*p<'0'||*p>'9'||number>(10000000u-(*p-'0'))/10u)return 0;
+        number=number*10u+(*p-'0');
+    }
+    if(!number)return 0;
+    *out=number;return 1;
+}
+static FILE *crowd_exclusive(const char *path)
+{
+    int descriptor=open(path,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
+    if(descriptor<0)return NULL;
+    FILE *stream=fdopen(descriptor,"wb");
+    if(!stream){close(descriptor);unlink(path);}
+    return stream;
+}
+static int crowd_write(const char *path,const unsigned char *data,size_t bytes)
+{
+    FILE *stream=crowd_exclusive(path);
+    if(!stream)return 0;
+    int ok=fwrite(data,1,bytes,stream)==bytes;
+    if(fclose(stream))ok=0;
+    if(!ok)unlink(path); /* Only a file exclusively created by this call. */
+    return ok;
+}
+static void capture_crowd_after_present(IDirect3DDevice8 *device,uint64_t elapsed_ns,uint64_t frame)
+{
+    static int initialized,enabled,match_hair;
+    static unsigned attempts,queries,hair_queries,exhausted_reported;
+    static uint64_t minimum=1000,interval=60,next_frame,last_frame,bmp_written,raw_written;
+    static char prefix[768],stem[129];
+    if(!initialized) {
+        initialized=1;
+        const char *gate=getenv("TOPSPIN_CROWD_CAPTURE");
+        if(!gate||strcmp(gate,"1"))return;
+        const char *p=getenv("TOPSPIN_CROWD_CAPTURE_PREFIX");
+        char directory[768];struct stat status;
+        if(!p||p[0]!='/'||strlen(p)>=sizeof prefix)goto invalid;
+        const char *slash=strrchr(p,'/');size_t length=strlen(slash+1);
+        if(!length||length>=sizeof stem)goto invalid;
+        for(const unsigned char *c=(const unsigned char*)slash+1;*c;c++)
+            if(!((*c>='A'&&*c<='Z')||(*c>='a'&&*c<='z')||(*c>='0'&&*c<='9')||*c=='_'||*c=='-'||*c=='.'))goto invalid;
+        size_t parent=(size_t)(slash-p);if(!parent)parent=1;
+        memcpy(directory,p,parent);directory[parent]=0;
+        int fd=open(directory,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+        if(fd<0)goto invalid;
+        int private_ok=!fstat(fd,&status)&&status.st_uid==geteuid()&&!(status.st_mode&0077);
+        close(fd);if(!private_ok)goto invalid;
+        const char *value=getenv("TOPSPIN_CROWD_CAPTURE_MIN_FRAME");
+        if(value&&!crowd_decimal(value,&minimum))goto invalid;
+        value=getenv("TOPSPIN_CROWD_CAPTURE_INTERVAL_FRAMES");
+        if(value&&!crowd_decimal(value,&interval))goto invalid;
+        value=getenv("TOPSPIN_CROWD_CAPTURE_MATCH_HAIR");match_hair=value&&!strcmp(value,"1");
+        if(!d3d8_vk_rt_diagnostic_rgb565 || (match_hair&&!nv2a_pb_hair_capture_completed_frame))goto invalid;
+        memcpy(prefix,p,strlen(p)+1);memcpy(stem,slash+1,length+1);
+        next_frame=minimum;enabled=1;
+    }
+    if(!enabled||!device||attempts>=CROWD_SNAPSHOTS||frame<minimum||frame<=last_frame)return;
+    last_frame=frame;
+    uint32_t hair_flip=0;
+    if(match_hair) {
+        if(hair_queries+queries>=CROWD_QUERIES)goto exhausted;
+        hair_queries++;
+        if(!nv2a_pb_hair_capture_completed_frame(&hair_flip))return;
+    } else if(frame<next_frame)return;
+    if(hair_queries+queries>=CROWD_QUERIES)goto exhausted;
+    queries++;next_frame=frame+interval;
+    uint32_t addresses[CROWD_ATLASES],total=0;
+    if(d3d8_vk_rt_diagnostic_rgb565(addresses,CROWD_ATLASES,&total)!=1||!total)return;
+    unsigned count=total<CROWD_ATLASES?total:CROWD_ATLASES;
+    attempts++; /* Failed reads/files never create an unbounded retry loop. */
+    char name[256],path[1024],image_name[256];
+    snprintf(image_name,sizeof image_name,"%s-crowd-snapshot%02u-frame%08llu.bmp",stem,attempts,(unsigned long long)frame);
+    snprintf(path,sizeof path,"%s-crowd-snapshot%02u-frame%08llu.bmp",prefix,attempts,(unsigned long long)frame);
+    D3DSURFACE_DESC desc={0};HRESULT result=0;int image_ok=0;
+    uint64_t remaining=CROWD_BMP_BUDGET-bmp_written;
+    if(remaining>54)image_ok=capture_backbuffer_limited(device,path,&desc,&result,1,
+        remaining<CROWD_BMP_SINGLE?remaining:CROWD_BMP_SINGLE);
+    if(image_ok)bmp_written+=(uint64_t)desc.Width*desc.Height*4u+54u;
+    struct CrowdImage {uint32_t address;int readback,saved;uint64_t hash;D3D8VkRasterExtent extent;char name[256];} rows[CROWD_ATLASES];
+    memset(rows,0,sizeof rows);unsigned saved=0;
+    unsigned char *rgba=malloc(CROWD_PIXELS);
+    for(unsigned i=0;i<count;i++) {
+        rows[i].address=addresses[i];
+        if(!rgba||CROWD_RAW_BUDGET-raw_written<CROWD_PIXELS){rows[i].readback=-2;continue;}
+        if(!d3d8_vk_rt_extent(addresses[i],&rows[i].extent)||
+           rows[i].extent.guest_width!=64||rows[i].extent.guest_height!=128){rows[i].readback=-3;continue;}
+        rows[i].readback=d3d8_vk_rt_readback(addresses[i],rgba,64*4);
+        if(rows[i].readback!=1)continue;
+        uint64_t hash=UINT64_C(14695981039346656037);
+        for(size_t j=0;j<CROWD_PIXELS;j++){hash^=rgba[j];hash*=UINT64_C(1099511628211);}
+        rows[i].hash=hash;
+        snprintf(rows[i].name,sizeof rows[i].name,"%s-crowd-snapshot%02u-frame%08llu-rt%08X.rgba",stem,attempts,(unsigned long long)frame,addresses[i]);
+        snprintf(path,sizeof path,"%s-crowd-snapshot%02u-frame%08llu-rt%08X.rgba",prefix,attempts,(unsigned long long)frame,addresses[i]);
+        rows[i].saved=crowd_write(path,rgba,CROWD_PIXELS);
+        if(rows[i].saved){raw_written+=CROWD_PIXELS;saved++;}
+    }
+    free(rgba);
+    snprintf(name,sizeof name,"%s-crowd-snapshot%02u-frame%08llu.json",stem,attempts,(unsigned long long)frame);
+    snprintf(path,sizeof path,"%s-crowd-snapshot%02u-frame%08llu.json",prefix,attempts,(unsigned long long)frame);
+    FILE *metadata=crowd_exclusive(path);int metadata_ok=metadata!=NULL;
+    if(metadata) {
+        if(fprintf(metadata,"{\"author\":\"djultra64\",\"host_frame\":%llu,\"elapsed_ns\":%llu,\"hair_payload_flip\":%u,\"snapshot\":%u,\"total_live_atlases\":%u,\"enumerated_atlases\":%u,\"saved_atlases\":%u,\"complete\":%s,\"backbuffer_saved\":%s,\"backbuffer\":\"%s\",\"backbuffer_width\":%u,\"backbuffer_height\":%u,\"atlas_width\":64,\"atlas_height\":128,\"layout\":\"RGBA8\",\"source\":\"live_GPU_RT_readback\",\"atlases\":[",
+           (unsigned long long)frame,(unsigned long long)elapsed_ns,hair_flip,attempts,total,count,saved,
+           saved==total&&image_ok?"true":"false",image_ok?"true":"false",image_name,desc.Width,desc.Height)<0)metadata_ok=0;
+        for(unsigned i=0;i<count;i++)if(fprintf(metadata,"%s{\"address\":\"%08X\",\"readback\":%d,\"saved\":%s,\"bytes\":%u,\"raster_width\":%u,\"raster_height\":%u,\"fnv1a64\":\"%016llx\",\"file\":\"%s\"}",
+            i?",":"",rows[i].address,rows[i].readback,rows[i].saved?"true":"false",rows[i].saved?CROWD_PIXELS:0,rows[i].extent.raster_width,rows[i].extent.raster_height,(unsigned long long)rows[i].hash,rows[i].name)<0)metadata_ok=0;
+        if(fputs("]}\n",metadata)==EOF)metadata_ok=0;
+        if(fclose(metadata))metadata_ok=0;
+        if(!metadata_ok)unlink(path);
+    }
+    fprintf(stderr,"[CROWD-ATLAS-CAPTURE] snapshot=%u host_frame=%llu hair_flip=%u live=%u retained=%u saved=%u truncated=%u backbuffer=%d metadata=%d atlas_bytes=%llu bmp_bytes=%llu queries=%u\n",
+        attempts,(unsigned long long)frame,hair_flip,total,count,saved,total>count,image_ok,metadata_ok,
+        (unsigned long long)raw_written,(unsigned long long)bmp_written,queries);
+    extern void nv2a_pb_dump_present_history(uint64_t,uint64_t);
+    nv2a_pb_dump_present_history(frame,elapsed_ns);
+    return;
+exhausted:
+    if(!exhausted_reported++){fputs("[CROWD-ATLAS-CAPTURE] bounded query budget exhausted; disabled\n",stderr);}
+    return;
+invalid:
+    fputs("[CROWD-ATLAS-CAPTURE] invalid/missing private prefix, configuration or backend API; disabled\n",stderr);
+}
+#else
+static void capture_crowd_after_present(IDirect3DDevice8 *device,uint64_t elapsed_ns,uint64_t frame)
 { (void)device;(void)elapsed_ns;(void)frame; }
 #endif
 
@@ -186,7 +415,9 @@ static void capture_rt(const char *prefix,uint64_t frame,uint32_t address)
 void topspin_frame_capture_after_present(IDirect3DDevice8 *device,
                                          uint64_t elapsed_ns,uint64_t frame)
 {
+    capture_replay_after_present(device,elapsed_ns,frame);
     capture_request_after_present(device,elapsed_ns,frame);
+    capture_crowd_after_present(device,elapsed_ns,frame);
     static int initialized,enabled,frames_mode;
     static char prefix[768];
     static uint64_t targets[16];
@@ -270,7 +501,7 @@ void topspin_frame_capture_after_present(IDirect3DDevice8 *device,
     if(frames_mode)snprintf(path,sizeof path,"%s-frame%08llu.bmp",prefix,(unsigned long long)wanted);
     else snprintf(path,sizeof path,"%s-%06llums.bmp",prefix,(unsigned long long)(wanted/1000000));
     D3DSURFACE_DESC desc={0};HRESULT result=0;
-    int ok=capture_backbuffer(device,path,&desc,&result);
+    int ok=capture_backbuffer(device,path,&desc,&result,0);
     if(frames_mode)
         fprintf(stderr,"[FRAME-CAPTURE] %s %s requested_frame=%llu actual=%.3fs frame=%llu size=%ux%u format=%08X api=%08X\n",
                 ok?"saved":"FAILED",path,(unsigned long long)wanted,(double)elapsed_ns/1e9,

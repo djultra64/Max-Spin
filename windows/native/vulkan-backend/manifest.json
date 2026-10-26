@@ -1,8 +1,8 @@
 {
   "author": "djultra64",
   "baseline_sdk": 136,
-  "scope": "configuration and backend guards only; native Windows host remains unported",
-  "patch_sha256": "020ee8f903ffa7b1416bb2a35c8028fb06dc5be0506eaaf09851dcb097c7c174",
+  "scope": "Windows Vulkan backend selection, guards and native API compatibility; native host adapters are maintained separately",
+  "patch_sha256": "6ebaf03c4200c5ecc271f02c0f9da732fc73329594da61d9a3b0943bf3c3ef6c",
   "files": {
     "src/d3d/CMakeLists.txt": {
       "baseline_sha256": "69436d992118da28969e0496f0e30b5463a94dd432b55da6411e6b97be1e967d",
@@ -25,8 +25,8 @@
       "result_sha256": "3fc574f646a9f4ea562de46f5541ea19f4c1a66b112af09bdbe9379ec885539b"
     },
     "src/d3d/d3d8_vk.c": {
-      "baseline_sha256": "7a3fe0ed70b059029169e1748da74cc4c74fe35bf857f2843f8b02c82b4fb99e",
-      "result_sha256": "c8cc2e3c6734e94a622612d76a1981533e838d2172a2abd2bac958942190ab08"
+      "baseline_sha256": "2aada4c989277691b891ec2b8ab1e6c25a4052dc8a63c4713fa417f9c7ee9c67",
+      "result_sha256": "54cd2c7261ab217826abdfae58762d6b3a00df14ef3a3b361017941d83e71d1e"
     }
   }
 }
