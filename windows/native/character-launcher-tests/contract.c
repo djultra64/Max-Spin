@@ -42,7 +42,7 @@ int main(void)
  join(p,packages,L"9");CHECK(CreateDirectoryW(p,NULL));join(q,p,L"manifest.json");CHECK(write_file(q,"{}"));
  SetEnvironmentVariableW(L"MAX_SPIN_PYTHON",L"Z:/missing/python.exe");CHECK(!topspin_windows_characters_begin(root,assets,packages,session,message,2048));CHECK(message[0]);
  join(p,root,L"native-linux");CHECK(CreateDirectoryW(p,NULL));join(q,p,L"tools");CHECK(CreateDirectoryW(q,NULL));join(p,q,L"character_session.py");
- CHECK(write_file(p,"import sys,struct\nfrom pathlib import Path\np=Path(sys.argv[sys.argv.index('--output')+1]);p.mkdir();(p/'files').mkdir()\n(p/'manifest.bin').write_bytes(b'MSCHAR1\\0'+struct.pack('<I',0))\n(p/'arguments.txt').write_text('\\n'.join(sys.argv),encoding='utf-8')\n"));
+ CHECK(write_file(p,"import sys,struct\nfrom pathlib import Path\np=Path(sys.argv[sys.argv.index('--output')+1]);p.mkdir();(p/'files').mkdir()\n(p/'manifest.bin').write_bytes(b'MSCHAR1\\0'+struct.pack('<I',0))\n(p/'arguments.txt').write_bytes('\\n'.join(sys.argv).encode('utf-8'))\n"));
  SetEnvironmentVariableW(L"MAX_SPIN_PYTHON",TEST_PYTHON);CHECK(topspin_windows_characters_begin(root,assets,packages,session,message,2048));
  CHECK(GetEnvironmentVariableW(L"MAX_SPIN_CHARACTER_SESSION",value,32768));join(q,session,L"characters");CHECK(!wcscmp(value,q));
  CHECK(GetEnvironmentVariableW(L"MAX_SPIN_CHARACTER_ASSETS",value,32768)&&!wcscmp(value,assets));CHECK(GetEnvironmentVariableW(L"MAX_SPIN_CHARACTER_MANIFEST_SHA256",value,32768)==64);

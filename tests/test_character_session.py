@@ -54,7 +54,7 @@ class SessionTests(fixtures.FrozenPackageFixture, unittest.TestCase):
     def test_actual_native_export_has_bounded_protocol_and_frozen_hashes(self):
         self.validation.stop()
         self.native(self.package, 'TukurXX')
-        originals = {str(p.relative_to(self.assets)): p.read_bytes()
+        originals = {p.relative_to(self.assets).as_posix(): p.read_bytes()
                      for p in self.assets.rglob('*') if p.is_file()}
         output = self.export()
         rows = records(output)
@@ -68,7 +68,7 @@ class SessionTests(fixtures.FrozenPackageFixture, unittest.TestCase):
             self.assertEqual(after, hashlib.sha256(payload).digest())
         (self.package / 'outfit0.wad').write_bytes(b'changed later')
         self.assertNotEqual(rows[0][4].read_bytes(), b'changed later')
-        self.assertEqual({str(p.relative_to(self.assets)): p.read_bytes()
+        self.assertEqual({p.relative_to(self.assets).as_posix(): p.read_bytes()
                           for p in self.assets.rglob('*') if p.is_file()}, originals)
         self.assertEqual(sorted(p.name for p in output.iterdir()), ['files', 'manifest.bin'])
 

@@ -48,9 +48,10 @@ def _information(handle):
 
 
 def _open(path, directory):
-    # FILE_READ_ATTRIBUTES for ancestors; GENERIC_READ for the final payload.
+    # GENERIC_READ also on ancestors: metadata-only FILE_READ_ATTRIBUTES handles
+    # do not enforce sharing against writable directory handles on Windows.
     # FILE_SHARE_WRITE/DELETE are absent: pin names and prevent reparse mutation.
-    handle = _kernel.CreateFileW(str(path), 0x80 if directory else 0x80000000,
+    handle = _kernel.CreateFileW(str(path), 0x80000000,
                                 1, None, 3,
                                 0x00200000 | 0x02000000, None)
     if handle == _INVALID_HANDLE:
