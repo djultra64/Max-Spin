@@ -199,6 +199,7 @@ class FrozenPackageTests(FrozenPackageFixture, unittest.TestCase):
             self.assertEqual((self.assets / archive).read_bytes(), original)
         self.assertFalse(selected.exists())
 
+    @unittest.skipIf(sys.platform == 'win32', 'Linux overlay cache uses POSIX permissions; native Windows session fixtures cover owned cleanup')
     def test_explicit_disk_root_bypasses_default_temp_quota_and_cleans_views(self):
         archive = 'Media/Wads/Players/TukurXX00.wad'
         originals = {str(path.relative_to(self.assets)): path.read_bytes()
@@ -239,6 +240,7 @@ class FrozenPackageTests(FrozenPackageFixture, unittest.TestCase):
         self.assertEqual(save.read_bytes(), b'original save')
         self.assertEqual(list(saves.iterdir()), [save])
 
+    @unittest.skipIf(sys.platform == 'win32', 'Linux launcher requires POSIX resource module; native Windows launcher fixtures cover session ownership')
     def test_actual_launcher_uses_installation_cache_for_frozen_character_view(self):
         native = Path(__file__).resolve().parents[1]/'native-linux'
         sys.path.insert(0, str(native))

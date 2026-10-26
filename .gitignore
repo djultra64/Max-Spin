@@ -5,7 +5,7 @@
 /reports/
 /.venv/
 /native-linux/analysis/
-/native-linux/src/recomp/
+/native-linux/src/recomp
 /native-linux/cache/
 /native-linux/logs/
 /native-linux/saves/

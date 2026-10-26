@@ -41,7 +41,16 @@ build is checked with native compilation and CPU contracts. The earlier
 Menu → Exhibition → Game gameplay observation above is historical; this
 release has no new Windows gameplay session.
 
-Automatic local athlete package loading is Linux-only. The native Windows
-launcher currently keeps the original roster. Package files and authoring tools
-are included as corresponding source; installing them through that launcher
-is not implemented.
+## Local athlete packages
+
+The native launcher now loads the same `characters/1` through `characters/32`
+packages as Linux. Keep Python3 (already needed for setup) and the full package
+source/tools with the launcher. `--characters PATH` selects another directory.
+Empty or invalid slots keep the original athlete, while valid slots are frozen
+for the whole session, including all mode transitions.
+
+Preparation copies only modified archives, then native workers authenticate the
+manifest and original/replacement hashes before routing exact disc resources.
+The runtime keeps the verified files open against writes/deletion until exit.
+Saves and executables are never redirected. This requires no administrator
+privileges or filesystem links. See [authoring](../characters/AUTHORING.md).

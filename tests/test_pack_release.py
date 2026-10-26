@@ -119,9 +119,18 @@ class Contracts(unittest.TestCase):
             bundle=root/'third-party-sources';bundle.mkdir();(bundle/'SOURCE_MANIFEST.json').write_text('{"fixture":true}\n')
             args=argparse.Namespace(source_root=source,build_root=build,output=root/'package',platform='linux',
                 link_commands=link,path_map=[],private_prefix=[],strip_tool=None,dll_dir=[],system_dll=[],extra_license=[],dependency_bundle=[bundle])
+            features=source/'FEATURES.json'
+            features.write_text(json.dumps({'schema':'maxspin-feature-parity-v1','platforms':{
+                'linux':{'athlete-packages':1},'windows':{}}}))
+            with self.assertRaisesRegex(ValueError,'feature parity'):
+                pack.package(args)
+            self.assertFalse(args.output.exists())
+            features.write_text(json.dumps({'schema':'maxspin-feature-parity-v1','platforms':{
+                'linux':{'athlete-packages':1},'windows':{'athlete-packages':1}}}))
             self.assertGreater(pack.package(args),10)
             manifest=json.loads((args.output/'RELEASE_MANIFEST.json').read_text())
             self.assertEqual(len(json.loads((args.output/'relink/targets.json').read_text())['targets']),10)
+            self.assertEqual(manifest['features'],{'athlete-packages':1})
             self.assertFalse(any('links.json'in name for name in manifest['files']))
             self.assertIn('third-party-sources/third-party-sources/SOURCE_MANIFEST.json',manifest['files'])
             with self.assertRaisesRegex(ValueError,'must be new'):pack.package(args)

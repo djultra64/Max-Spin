@@ -4,7 +4,7 @@ Own work: djultra64.
 
 Folders 1 through 32 are empty in this public distribution. They keep the original Xbox roster until you provide a validated compatible package. The private eight-athlete review artwork, WADs, textures, meshes and portrait inputs are not distributed. `slots.json` records the original selector order and measured roster IDs.
 
-The optional Linux loader validates source hashes, both outfits and LODs, bounded resource paths and typed changes before freezing a private asset view. Invalid slots retain their original athlete. Original game files and saves remain user supplied. Automatic character-package loading is not implemented in the native Windows launcher.
+The optional Linux and Windows loaders validates source hashes, both outfits and LODs, bounded resource paths and typed changes before freezing a private asset view. Invalid slots retain their original athlete. Original game files and saves remain user supplied. Both launchers automatically load these folders at session start. Windows uses Python3 for shared validation and native authenticated routes for its frozen archives; it needs neither administrator privileges nor filesystem links.
 
 Slots 1 through 16 follow the verified original male selector. Slots 17 through 32 are provisional female native-ID allocations; their visible selector order is unverified.
 
