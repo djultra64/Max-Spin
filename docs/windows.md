@@ -2,6 +2,8 @@
 
 Native Windows testing has exercised the original **Menu → Exhibition → Game** flow, including a serve. This verifies a limited gameplay flow; complete graphics, audio, controller, mode transition, Career, and save compatibility remain under test. Windows builds are experimental.
 
+For downloaded packages, use the [portable ISO installer](install.md). End users select only an Xbox ISO and destination; the tools below are for developers.
+
 ## Building
 
 Use a native Windows x64 Clang toolchain with CMake 3.25 or newer, Ninja, SDL3, Vulkan, and shaderc development packages. Generate all nine modules from your own game files using the Python pipeline described in [the source build instructions](build.md). The required Python packages and original filenames are the same on both platforms.
@@ -19,19 +21,13 @@ python native-linux/tools/setup_game.py --build-dir build/native-windows/title
 
 The expected output folder is `build/native-windows/title`, containing `MaxSpin.exe` and nine `topspin_<module>.exe` workers. Keep these executables together. Resource preparation writes local caches under `native-linux/cache`, including `ui-layout-v1` for the corrected footer and match-intro layout, and requires fresh destinations, as described in the build instructions. These private UI archives are authenticated against the original game and do not modify it. Administrator access or filesystem links are not required. Runtime DLLs required by the installed SDL3, Vulkan, shaderc, and compiler environment must be available; these commands are not a standalone binary packaging procedure.
 
-## Starting
+## Starting the portable application
 
-Launch the window owner with your extracted game directory:
-
-```text
-MaxSpin.exe --assets "GAME_DIRECTORY" --resources "RESOURCE_DIRECTORY" --image menu
-```
-
-`RESOURCE_DIRECTORY` is the full path to the prepared `native-linux/cache` directory. An explicit `--resources` path avoids relying on a particular package layout. The launcher also accepts `--saves "SAVE_DIRECTORY"` and `--graphics "GRAPHICS_INI"`. Graphics preferences default to `Max Spin/graphics.ini` under Windows Local AppData.
-
-Without `--saves`, saves default to the `Max Spin/Saves` folder under Windows Local AppData. Keep that directory when resetting graphics preferences. If `--assets` is omitted, the launcher can ask you to select the original `default.xbe`.
-
-Complete matches and mode coverage, high frame rate physics, and broad controller/save compatibility are not established by this limited validation. Report failures with reproduction steps and a redacted log excerpt, without uploading original game files or saves.
+Open MaxSpin.exe. With an unprepared package it opens the bundled installation
+assistant. A completed portable installation uses its local assets, caches,
+Saves and Settings folders. It never asks for an individual Xbox executable.
+The bundled frontend also prepares optional athlete packages, without a system
+Python installation. Temporary native sessions stay in Cache/Sessions.
 
 ## v0.1.2 build
 
@@ -44,7 +40,7 @@ release has no new Windows gameplay session.
 ## Local athlete packages
 
 The native launcher now loads the same `characters/1` through `characters/32`
-packages as Linux. Keep Python3 (already needed for setup) and the full package
+packages as Linux. Keep the bundled portable runtime and the full package
 source/tools with the launcher. `--characters PATH` selects another directory.
 Empty or invalid slots keep the original athlete, while valid slots are frozen
 for the whole session, including all mode transitions.

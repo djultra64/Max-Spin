@@ -113,11 +113,15 @@ class Contracts(unittest.TestCase):
             (build/'module.o').write_bytes(b'synthetic object');(build/'libxbox_apu.a').write_bytes(b'synthetic archive')
             commands=[]
             for image in (*pack.IMAGES,'window_host'):
-                name='topspin_'+image;(build/name).write_bytes(b'\x7fELFsynthetic')
+                name='topspin_'+image;shutil.copy2('/bin/true',build/name)
                 commands.append(dict(directory=str(build),arguments=['cc','module.o','libxbox_apu.a','-o',name,'-lm']))
             link=root/'links.json';link.write_text(json.dumps(dict(commands=commands,toolchain={'compiler':'fixture cc'})))
             bundle=root/'third-party-sources';bundle.mkdir();(bundle/'SOURCE_MANIFEST.json').write_text('{"fixture":true}\n')
-            args=argparse.Namespace(source_root=source,build_root=build,output=root/'package',platform='linux',
+            runtime=root/'frontend';(runtime/'_internal').mkdir(parents=True)
+            (runtime/'MaxSpin-Setup').write_bytes(b'\x7fELFfixture')
+            (runtime/'_internal/libpython.so').write_bytes(b'fixture')
+            (runtime/'PORTABLE_RUNTIME.json').write_text(json.dumps({'schema':1,'platform':'linux','format':'onedir','self_check':True}))
+            args=argparse.Namespace(source_root=source,build_root=build,output=root/'package',platform='linux',portable_runtime=runtime,
                 link_commands=link,path_map=[],private_prefix=[],strip_tool=None,dll_dir=[],system_dll=[],extra_license=[],dependency_bundle=[bundle])
             features=source/'FEATURES.json'
             features.write_text(json.dumps({'schema':'maxspin-feature-parity-v1','platforms':{

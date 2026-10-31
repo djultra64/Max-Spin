@@ -47,6 +47,62 @@ def sha(path):
     return h.hexdigest()
 
 
+def copy_portable_runtime(runtime, destination, platform):
+    """Require a checked onedir frontend: no host Python or temp extraction."""
+    runtime = Path(runtime)
+    executable = runtime / ('MaxSpin-Setup.exe' if platform == 'windows' else 'MaxSpin-Setup')
+    receipt = runtime / 'PORTABLE_RUNTIME.json'
+    try:
+        metadata = json.loads(receipt.read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError('missing portable runtime build receipt') from error
+    if (metadata != {'schema':1, 'platform':platform, 'format':'onedir', 'self_check':True}
+            or not executable.is_file() or not (runtime/'_internal').is_dir()
+            or not any('python' in p.name.lower() for p in (runtime/'_internal').iterdir())):
+        raise ValueError('incomplete portable runtime')
+    # Dereference only internal links: the distributable itself contains plain
+    # files, avoiding Windows symlink privileges and install-time link writes.
+    for entry in runtime.rglob('*'):
+        if not entry.resolve().is_relative_to(runtime.resolve()):
+            raise ValueError('portable runtime link escapes bundle')
+    shutil.copytree(runtime, destination/'portable-runtime', symlinks=False)
+
+
+def collect_linux_libraries(binaries, destination):
+    """Bundle ldd's non-glibc dependency closure, using exact loader names."""
+    system = re.compile(r'^(?:ld-linux[^/]*|lib(?:c|m|pthread|dl|rt|resolv|util|anl)\.so(?:\..*)?)$')
+    result = {}
+    for binary in binaries:
+        probe = subprocess.run(['ldd', str(binary)], capture_output=True, text=True)
+        if probe.returncode or 'not found' in probe.stdout:
+            raise ValueError('unresolved Linux runtime dependencies: '+binary.name+'\n'+probe.stdout+probe.stderr)
+        for line in probe.stdout.splitlines():
+            match = re.match(r'\s*(\S+)\s+=>\s+(/.*?)\s+\(0x[0-9a-fA-F]+\)', line)
+            if not match: continue
+            name, source = match.groups()
+            if system.match(name): continue
+            source = Path(source)
+            checksum = sha(source)
+            if name in result and result[name]['sha256'] != checksum:
+                raise ValueError('conflicting Linux runtime library: '+name)
+            target = destination/name
+            if not target.exists(): shutil.copy2(source, target)
+            result[name] = {'sha256':checksum}
+            # Retain the installed distribution's authentic dependency notices.
+            # Other build hosts can supply notices with --extra-license.
+            if shutil.which('rpm'):
+                owner = subprocess.run(['rpm','-qf','--qf','%{NAME}',str(source.resolve())],capture_output=True,text=True)
+                if owner.returncode: continue
+                inventory = subprocess.run(['rpm','-ql',owner.stdout],capture_output=True,text=True)
+                for filename in inventory.stdout.splitlines():
+                    notice = Path(filename)
+                    if '/usr/share/licenses/' not in filename or not notice.is_file(): continue
+                    output = destination.parent/'licenses/linux-libraries'/owner.stdout/notice.name
+                    output.parent.mkdir(parents=True,exist_ok=True)
+                    shutil.copy2(notice,output)
+    return result
+
+
 def normalized(value):
     return str(value).replace('\\', '/').rstrip('/')
 
@@ -448,6 +504,8 @@ def package(args):
                 subprocess.run([args.strip_tool, '--strip-debug', str(target)], check=True)
             ensure_no_private_paths(target, prefixes)
         dlls = collect_dlls(binaries, [build, *args.dll_dir], bin_dir, args.system_dll) if args.platform == 'windows' else {}
+        linux_libraries = collect_linux_libraries(binaries, bin_dir) if args.platform == 'linux' else {}
+        copy_portable_runtime(args.portable_runtime, temporary, args.platform)
         for name in dlls:
             ensure_no_private_paths(bin_dir / name, prefixes)
         relink = temporary / 'relink'
@@ -508,8 +566,9 @@ def package(args):
         files = {str(p.relative_to(temporary)): sha(p) for p in sorted(temporary.rglob('*')) if p.is_file()}
         (temporary / 'RELEASE_MANIFEST.json').write_text(json.dumps(dict(
             version=1, project='Max Spin', author='djultra64', platform=args.platform,
-            files=files, runtime_dlls=dlls, source_included=True, features=features,
-            limits=['Requires original game files supplied by the user.',
+            files=files, runtime_dlls=dlls, runtime_libraries=linux_libraries,
+            portable_installer=True, source_included=True, features=features,
+            limits=['Requires an original Xbox Top Spin ISO supplied by the user.',
                     'Native game workers contain locally generated translations; project MIT does not license original game rights.',
                     'Packaging is not gameplay or platform validation.']), indent=2) + '\n')
         # Reserve output exclusively; a concurrent existing directory is never replaced.
@@ -570,6 +629,8 @@ def main():
     parser.add_argument('--source-root', type=Path, required=True, help='curated public source only')
     parser.add_argument('--build-root', type=Path, required=True, help='folder with all ten native executables')
     parser.add_argument('--platform', choices=('linux', 'windows'), required=True)
+    parser.add_argument('--portable-runtime', type=Path, required=True,
+                        help='verified onedir frontend built with tools/build_portable.py on the target platform')
     parser.add_argument('--link-commands', type=Path, required=True, help='private JSON commands with directory and argument arrays')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--path-map', action='append', default=[], type=lambda value: value.split('=', 1), metavar='ORIGINAL=LOCAL')

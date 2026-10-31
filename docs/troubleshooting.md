@@ -1,8 +1,14 @@
 # Troubleshooting
 
-## Missing original game image
+## ISO or installation cannot be prepared
 
-Use extracted files from the supported original Xbox game, retaining the exact filenames and directory layout. A disc image by itself is not the extracted asset directory. `native-linux/config/images.json` lists the executable filenames expected by the pipeline. Max Spin does not download game files.
+Open the complete downloaded package and choose your Top Spin Xbox ISO in the
+assistant. PC files and ISOs from other consoles are unsupported. The installer
+checks image integrity and available destination space and explains any failure.
+Choose a writable new or empty folder. No manual extraction or Python is needed.
+
+The following build diagnostics are for developers, not installation steps for
+people using the portable package.
 
 ## An image has not been built
 

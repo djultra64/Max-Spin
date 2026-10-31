@@ -109,6 +109,43 @@ print('Character slot 9: keeping defaults.',file=sys.stderr)
         self.assert_clear()
         self.assertEqual(list(self.session.iterdir()), [])
 
+    def frozen_runtime(self):
+        runtime = self.root / 'portable-runtime/MaxSpin-Setup.exe'
+        runtime.parent.mkdir()
+        # A kernel shebang cannot quote a virtualenv path containing spaces.
+        runtime.write_text('#!' + str(Path(sys.executable).resolve()) + '\nimport runpy,sys\nassert sys.argv[1] == "--tool"\nscript=sys.argv[2];sys.argv=sys.argv[2:]\nrunpy.run_path(script,run_name="__main__")\n')
+        runtime.chmod(0o755)
+        return runtime
+
+    def test_portable_bundled_runtime_ignores_unusable_external_python(self):
+        self.helper()
+        (self.root / 'portable-install.json').write_text('{}')
+        self.frozen_runtime()
+        os.environ['MAX_SPIN_PYTHON'] = '/missing/python'
+        self.assertEqual(self.begin(), 1, self.message.value)
+        self.assertTrue((self.session / 'characters/manifest.bin').is_file())
+
+    def test_portable_missing_bundle_rejects_working_external_python(self):
+        self.helper()
+        (self.root / 'portable-install.json').write_text('{}')
+        self.assertEqual(self.begin(), 0)
+        self.assertIn('bundled', self.message.value.lower())
+        self.assert_clear()
+        self.assertEqual(list(self.session.iterdir()), [])
+
+    def test_environment_portable_root_also_prohibits_python_fallback(self):
+        self.helper()
+        previous = os.environ.get('MAX_SPIN_PORTABLE_ROOT')
+        os.environ['MAX_SPIN_PORTABLE_ROOT'] = str(self.root)
+        try:
+            self.assertEqual(self.begin(), 0)
+            self.assertIn('bundled', self.message.value.lower())
+        finally:
+            if previous is None:
+                del os.environ['MAX_SPIN_PORTABLE_ROOT']
+            else:
+                os.environ['MAX_SPIN_PORTABLE_ROOT'] = previous
+
     def test_missing_interpreter_fails_before_export(self):
         self.helper()
         os.environ['MAX_SPIN_PYTHON'] = '/missing/python'

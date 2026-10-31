@@ -9,7 +9,10 @@
       "graphics-options": 1,
       "sprite-filtering": 1,
       "persistent-game-window": 1,
-      "isolated-save-storage": 1
+      "isolated-save-storage": 1,
+      "portable-iso-installer": 1,
+      "bundled-preparation-runtime": 1,
+      "install-local-user-state": 1
     },
     "windows": {
       "athlete-packages": 1,
@@ -19,7 +22,10 @@
       "graphics-options": 1,
       "sprite-filtering": 1,
       "persistent-game-window": 1,
-      "isolated-save-storage": 1
+      "isolated-save-storage": 1,
+      "portable-iso-installer": 1,
+      "bundled-preparation-runtime": 1,
+      "install-local-user-state": 1
     }
   }
 }

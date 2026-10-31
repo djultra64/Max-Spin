@@ -176,7 +176,12 @@ def supervise(image, build_dir, assets, saves):
     initial_family = canonical_controller_family(child_env.get('TOPSPIN_CONTROLLER_FAMILY', 'auto'))
     csv_prefix = child_env.pop('TOPSPIN_FRAME_CSV', None)
     initial_command = image_command(image, build_dir, assets, saves)
-    with tempfile.TemporaryDirectory(prefix='topspin-launch-') as directory:
+    portable = os.environ.get('MAX_SPIN_PORTABLE_ROOT')
+    session_root = None
+    if portable:
+        session_root = Path(portable).resolve() / 'Cache/Sessions'
+        session_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='topspin-launch-', dir=session_root) as directory:
         freeze_render_preferences(child_env, Path(directory))
         return _supervise_session(image, build_dir, assets, saves, child_env, initial_command, directory, initial_family, csv_prefix)
 

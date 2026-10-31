@@ -37,7 +37,7 @@ int topspin_windows_characters_begin(const wchar_t *install,const wchar_t *asset
  const wchar_t *packages,const wchar_t *session,wchar_t *message,unsigned cap)
 {
  wchar_t output[PATH_CAP],helper[PATH_CAP],python[PATH_CAP],wide_digest[65];
- char digest[65];int use_py=0;
+ char digest[65];int use_py=0,bundled=0;
  if(message&&cap)message[0]=0;
  topspin_windows_character_session_close();
  if(!scrub())return fail(message,cap,L"Cannot clear inherited athlete session settings.");
@@ -53,16 +53,22 @@ int topspin_windows_characters_begin(const wchar_t *install,const wchar_t *asset
   return fail(message,cap,L"The athlete session output already exists or is unsafe.");
  if(topspin_character_platform_kind(helper)!=1)
   return fail(message,cap,L"Install the complete Max Spin package with its athlete preparation tools.");
- if(!topspin_character_platform_python(python,PATH_CAP,&use_py))
-  return fail(message,cap,L"Python 3 is required for athlete packages. Install Python 3 or set MAX_SPIN_PYTHON to its executable.");
+ if(!join(python,install,L"portable-runtime/MaxSpin-Setup.exe"))
+  return fail(message,cap,L"The bundled preparation runtime path is too long.");
+ int runtime_kind=topspin_character_platform_kind(python);
+ if(runtime_kind==1)bundled=1;
+ else if(runtime_kind!=0||topspin_character_platform_portable(install))
+  return fail(message,cap,L"The bundled preparation runtime is missing or unsafe. Install the complete Max Spin package.");
+ else if(!topspin_character_platform_python(python,PATH_CAP,&use_py))
+  return fail(message,cap,L"Cannot locate the bundled preparation runtime. Install the complete Max Spin package.");
  wcscpy(owned,output);
  const wchar_t *args[10];unsigned count=0;
- args[count++]=python;if(use_py)args[count++]=L"-3";
+ args[count++]=python;if(bundled)args[count++]=L"--tool";else if(use_py)args[count++]=L"-3";
  args[count++]=helper;args[count++]=L"--assets";args[count++]=assets;
  args[count++]=L"--characters";args[count++]=packages;args[count++]=L"--output";args[count++]=output;
  if(!topspin_character_platform_run(python,count,args,install,message,cap)){
   topspin_windows_characters_end(session);
-  if(!message[0])fail(message,cap,L"Athlete preparation failed. Check Python and your character packages.");
+  if(!message[0])fail(message,cap,L"Athlete preparation failed. Check the bundled runtime and your character packages.");
   return 0;
  }
  if(!topspin_windows_character_session_validate(assets,output,digest)){

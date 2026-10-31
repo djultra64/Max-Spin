@@ -63,6 +63,14 @@ int topspin_character_platform_packages(const wchar_t *path)
  }while(FindNextFileW(search,&data));
  FindClose(search);release(&held);return found;
 }
+int topspin_character_platform_portable(const wchar_t *install)
+{
+ wchar_t marker[PATH_CAP];
+ int n=swprintf(marker,PATH_CAP,L"%ls/portable-install.json",install);
+ /* A malformed/reparse marker must never enable an external interpreter. */
+ return GetEnvironmentVariableW(L"MAX_SPIN_PORTABLE_ROOT",NULL,0)!=0||
+  (n>0&&n<PATH_CAP&&topspin_character_platform_kind(marker)!=0);
+}
 int topspin_character_platform_python(wchar_t *path,unsigned cap,int *use_py)
 {
  *use_py=0;DWORD n=GetEnvironmentVariableW(L"MAX_SPIN_PYTHON",path,cap);

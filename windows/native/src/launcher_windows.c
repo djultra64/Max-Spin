@@ -3,8 +3,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
-#include <commdlg.h>
-#include <shlobj.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -13,6 +11,7 @@
 #include "graphics_settings.h"
 #include "ui_layout_windows.h"
 #include "character_launcher.h"
+#include "portable_paths.h"
 static HWND window;static HANDLE quit_event;static int closing;
 static const wchar_t*keys[]={L"boot",L"menu",L"game",L"career",L"training",L"playercreator",L"shop",L"online",L"stop"};
 static const wchar_t*files[]={L"default.xbe",L"TopSpin(Menu).xbe",L"TopSpin(Game).xbe",L"TopSpin(Career).xbe",L"TopSpin(Training).xbe",L"TopSpin(PlayerCreator).xbe",L"TopSpin(Shop).xbe",L"TopSpin(Online).xbe",L"TopSpin(Stop).xbe"};
@@ -20,41 +19,91 @@ static LRESULT CALLBACK procedure(HWND h,UINT m,WPARAM w,LPARAM l){if(m==WM_CLOS
 static int error(const wchar_t*s){fwprintf(stderr,L"[Max Spin] %ls\n",s);fflush(stderr);OutputDebugStringW(s);MessageBoxW(window,s,L"Max Spin",MB_OK|MB_ICONERROR);return 1;}
 static int path(wchar_t*out,size_t cap,const wchar_t*a,const wchar_t*b){int n=swprintf(out,cap,L"%ls/%ls",a,b);return n>0&&(size_t)n<cap;}
 static int regular(const wchar_t*p){DWORD a=GetFileAttributesW(p);return a!=INVALID_FILE_ATTRIBUTES&&!(a&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT));}
+/* Refuse existing junctions/reparse files before creating portable paths.
+ * Inspect ancestors too: a junction named Settings must not redirect writes. */
+static int safe_location(const wchar_t *name,int directory,int create)
+{
+ wchar_t part[32768];size_t n=wcslen(name);if(n>=32768)return 0;wcscpy(part,name);
+ for(size_t i=3;i<=n;i++)if(!part[i]||part[i]==L'/'){
+  wchar_t saved=part[i];part[i]=0;int is_directory=i<n||directory;
+  DWORD attributes=GetFileAttributesW(part);
+  if(attributes==INVALID_FILE_ATTRIBUTES){
+   DWORD reason=GetLastError();
+   if(reason!=ERROR_FILE_NOT_FOUND&&reason!=ERROR_PATH_NOT_FOUND){part[i]=saved;return 0;}
+   if(create&&is_directory){
+    if(!CreateDirectoryW(part,NULL)&&GetLastError()!=ERROR_ALREADY_EXISTS){part[i]=saved;return 0;}
+    attributes=GetFileAttributesW(part);
+    if(attributes==INVALID_FILE_ATTRIBUTES){part[i]=saved;return 0;}
+   }
+  }
+  if(attributes!=INVALID_FILE_ATTRIBUTES&&((attributes&FILE_ATTRIBUTE_REPARSE_POINT)||!!(attributes&FILE_ATTRIBUTE_DIRECTORY)!=is_directory)){part[i]=saved;return 0;}
+  part[i]=saved;
+ }
+ return 1;
+}
+static int setup(const wchar_t *root)
+{
+ wchar_t executable[32768],cmd[65536];
+ if(!path(executable,32768,root,L"portable-runtime/MaxSpin-Setup.exe")||!regular(executable)||!safe_location(executable,0,0))
+  return error(L"Install the complete Max Spin package with its bundled ISO setup application.");
+ int n=swprintf(cmd,65536,L"\"%ls\" --setup",executable);if(n<=0||n>=65536)return error(L"Setup path is too long");
+ STARTUPINFOW startup={.cb=sizeof startup};PROCESS_INFORMATION child={0};
+ if(!CreateProcessW(executable,cmd,NULL,NULL,FALSE,CREATE_UNICODE_ENVIRONMENT,NULL,root,&startup,&child))
+  return error(L"Cannot open the bundled ISO setup application. Install the complete Max Spin package.");
+ CloseHandle(child.hThread);CloseHandle(child.hProcess);return 0;
+}
 static int destination(const unsigned char*page){char field[521];size_t i;for(i=0;i<520&&page[8+i];i++){if(page[8+i]<32||page[8+i]>127)return -1;field[i]=(char)page[8+i];}if(!i||i==520)return -1;field[i]=0;const char*name=field;if(!_strnicmp(name,"\\Device\\CdRom0;",15))name+=15;else if(!_strnicmp(name,"\\Device\\CdRom0\\",15))name+=15;else if(!_strnicmp(name,"d:\\",3))name+=3;if(strpbrk(name,"\\/:;"))return -1;wchar_t wide[521];if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,name,-1,wide,521))return -1;for(int k=0;k<9;k++)if(!_wcsicmp(wide,files[k]))return k;return -1;}
 static int page_read(const wchar_t*p,unsigned char*out){HANDLE f=CreateFileW(p,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(f==INVALID_HANDLE_VALUE)return 0;LARGE_INTEGER length;BY_HANDLE_FILE_INFORMATION info;DWORD got=0;int ok=GetFileInformationByHandle(f,&info)&&!(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))&&GetFileSizeEx(f,&length)&&length.QuadPart==4096&&ReadFile(f,out,4096,&got,NULL)&&got==4096;CloseHandle(f);return ok;}
 static int page_write(const wchar_t*p,const unsigned char*page){HANDLE f=CreateFileW(p,GENERIC_WRITE,0,NULL,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);if(f==INVALID_HANDLE_VALUE)return 0;DWORD n=0;int ok=WriteFile(f,page,4096,&n,NULL)&&n==4096&&FlushFileBuffers(f);CloseHandle(f);return ok;}
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,PWSTR command,int show){
- (void)previous;(void)command;int argc;wchar_t**argv=CommandLineToArgvW(GetCommandLineW(),&argc);wchar_t assets[32768]={0},saves[32768]={0},root[32768],resources[32768]={0},graphics[32768]={0},characters[32768]={0},temp[32768],input[32768],output[32768],event_name[96];int image=1;
- GetModuleFileNameW(NULL,root,32768);wchar_t*slash=wcsrchr(root,L'\\');if(!slash)return error(L"Cannot locate Max Spin");*slash=0;
+ (void)previous;(void)command;int argc;wchar_t**argv=CommandLineToArgvW(GetCommandLineW(),&argc);wchar_t assets[32768]={0},saves[32768]={0},root[32768],resources[32768]={0},graphics[32768]={0},characters[32768]={0},sessions[32768],temporary[32768],input[32768],output[32768],event_name[96];int image=1;
+ DWORD module_length=GetModuleFileNameW(NULL,root,32768);if(!module_length||module_length>=32768)return error(L"Cannot locate Max Spin");
+ wchar_t*slash=wcsrchr(root,L'\\');if(!slash)return error(L"Cannot locate Max Spin");*slash=0;
+ wchar_t normalized_root[32768];if(!topspin_portable_normalize(normalized_root,32768,root))return error(L"Invalid installation directory");wcscpy(root,normalized_root);
+ wchar_t marker[32768],inherited_root[32768];path(marker,32768,root,L"portable-install.json");
+ DWORD inherited_length=GetEnvironmentVariableW(L"MAX_SPIN_PORTABLE_ROOT",inherited_root,32768);
+ int portable=GetFileAttributesW(marker)!=INVALID_FILE_ATTRIBUTES||inherited_length!=0;
+ if(inherited_length){if(inherited_length>=32768||!topspin_portable_normalize(normalized_root,32768,inherited_root)||_wcsicmp(normalized_root,root))return error(L"Portable installation root does not match MaxSpin.exe.");}
+ if(!safe_location(root,1,0))return error(L"Installation directory contains an unsafe link or alias.");
  for(int i=1;i<argc;i++){if(i+1<argc&&!wcscmp(argv[i],L"--assets"))wcsncpy(assets,argv[++i],32767);else if(i+1<argc&&!wcscmp(argv[i],L"--saves"))wcsncpy(saves,argv[++i],32767);else if(i+1<argc&&!wcscmp(argv[i],L"--resources"))wcsncpy(resources,argv[++i],32767);else if(i+1<argc&&!wcscmp(argv[i],L"--characters"))wcsncpy(characters,argv[++i],32767);else if(i+1<argc&&!wcscmp(argv[i],L"--graphics"))wcsncpy(graphics,argv[++i],32767);else if(i+1<argc&&!wcscmp(argv[i],L"--image")){i++;image=-1;for(int k=0;k<9;k++)if(!wcscmp(argv[i],keys[k]))image=k;if(image<0)return error(L"Unknown image");}else return error(L"Usage: MaxSpin.exe --assets game-folder [--saves save-folder] [--image menu] [--resources cache-folder] [--graphics graphics.ini] [--characters package-folder]");}LocalFree(argv);
- if(!assets[0]){wchar_t picked[32768]={0};OPENFILENAMEW of={.lStructSize=sizeof of,.lpstrFilter=L"Original game executable\0default.xbe\0",.lpstrFile=picked,.nMaxFile=32768,.lpstrTitle=L"Select default.xbe from your own game files",.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR};if(!GetOpenFileNameW(&of))return 0;wchar_t*leaf=wcsrchr(picked,L'\\');if(!leaf)return error(L"Invalid game folder");*leaf=0;wcscpy(assets,picked);}
- if(!saves[0]){if(!GetEnvironmentVariableW(L"LOCALAPPDATA",saves,32768))return error(L"Cannot locate save directory");wcscat(saves,L"/Max Spin/Saves");}if(SHCreateDirectoryExW(NULL,saves,NULL)!=ERROR_SUCCESS&&GetFileAttributesW(saves)==INVALID_FILE_ATTRIBUTES)return error(L"Cannot create save folder");
- for(int k=0;k<9;k++){wchar_t p[32768],name[64];swprintf(name,64,L"topspin_%ls.exe",keys[k]);if(!path(p,32768,root,name)||!regular(p))return error(L"Install the complete Max Spin package with all nine image workers.");if(!path(p,32768,assets,files[k])||!regular(p))return error(L"Your game folder is missing an original executable.");}
- if(!resources[0]&&!path(resources,32768,root,L"resources"))return error(L"Resource path is too long");
- if(!characters[0]&&!path(characters,32768,root,L"characters"))return error(L"Characters path is too long");
- {wchar_t absolute[32768];DWORD n=GetFullPathNameW(assets,32768,absolute,NULL);if(!n||n>=32768)return error(L"Game path is too long");wcscpy(assets,absolute);n=GetFullPathNameW(resources,32768,absolute,NULL);if(!n||n>=32768)return error(L"Resource path is too long");wcscpy(resources,absolute);n=GetFullPathNameW(characters,32768,absolute,NULL);if(!n||n>=32768)return error(L"Characters path is too long");wcscpy(characters,absolute);n=GetFullPathNameW(saves,32768,absolute,NULL);if(!n||n>=32768)return error(L"Save path is too long");wcscpy(saves,absolute);}
+ /* Resolve every default relative to the executable, including development
+  * launches. A completed portable install also restricts explicit overrides. */
+ wchar_t resolved[32768];
+#define RESOLVE(value,leaf) do{if(!topspin_portable_path(resolved,32768,root,value,leaf,portable))return error(L"Portable paths must remain inside the Max Spin installation.");wcscpy(value,resolved);if(!safe_location(value,wcscmp(leaf,L"Settings/graphics.ini")!=0,0))return error(L"A Max Spin path contains an unsafe link or alias.");}while(0)
+ RESOLVE(assets,L"assets");RESOLVE(saves,L"Saves");RESOLVE(resources,L"native-linux/cache");RESOLVE(characters,L"characters");RESOLVE(graphics,L"Settings/graphics.ini");
+#undef RESOLVE
+ if(!topspin_portable_path(sessions,32768,root,NULL,L"Cache/Sessions",1)||!topspin_portable_path(temporary,32768,root,NULL,L"Cache/Temp",1)||!safe_location(sessions,1,0)||!safe_location(temporary,1,0))return error(L"Cannot resolve portable temporary folders.");
+ /* Missing private data opens the ISO wizard; never request an extracted XBE. */
+ for(int k=0;k<9;k++){wchar_t p[32768];if(!path(p,32768,assets,files[k])||!regular(p))return setup(root);}
+ for(int k=0;k<9;k++){wchar_t p[32768],name[64];swprintf(name,64,L"topspin_%ls.exe",keys[k]);if(!path(p,32768,root,name)||!regular(p))return error(L"Install the complete Max Spin package with all nine image workers.");}
  wchar_t resource_path[32768],probe[32768];
  const wchar_t*resource_dirs[]={L"menu-pc-v4",L"sprite-ui-v1-menu",L"controller-prompts-v4-extended9-hud-v1/menu"};
  const wchar_t*resource_env[]={L"TOPSPIN_MENU_PC_DIR",L"TOPSPIN_SPRITE_UI_CACHE",L"TOPSPIN_PROMPTS_ROOT"};
- for(int k=0;k<3;k++){path(resource_path,32768,resources,resource_dirs[k]);path(probe,32768,resource_path,k==2?L"manifest.txt":L"manifest.json");if(!regular(probe))return error(L"Prepare your private game resources with setup_game.py, then pass --resources with its cache folder.");if(k==2)path(resource_path,32768,resources,L"controller-prompts-v4-extended9-hud-v1");SetEnvironmentVariableW(resource_env[k],resource_path);}
- if(!path(resource_path,32768,resources,L"ui-layout-v1")||!topspin_windows_ui_layout_validate(assets,resource_path))return error(L"Prepare the current private UI resources with setup_game.py. The original and private UI archives must match this Max Spin build.");
+ for(int k=0;k<3;k++){path(resource_path,32768,resources,resource_dirs[k]);path(probe,32768,resource_path,k==2?L"manifest.txt":L"manifest.json");if(!regular(probe))return setup(root);if(k==2)path(resource_path,32768,resources,L"controller-prompts-v4-extended9-hud-v1");SetEnvironmentVariableW(resource_env[k],resource_path);}
+ if(!path(resource_path,32768,resources,L"ui-layout-v1")||!topspin_windows_ui_layout_validate(assets,resource_path))return setup(root);
  SetEnvironmentVariableW(L"TOPSPIN_UI_LAYOUT_DIR",resource_path);
- if(!graphics[0]){if(!GetEnvironmentVariableW(L"LOCALAPPDATA",graphics,32768))return error(L"Cannot locate preferences");wcscat(graphics,L"/Max Spin");SHCreateDirectoryExW(NULL,graphics,NULL);wcscat(graphics,L"/graphics.ini");}
- {wchar_t absolute[32768];DWORD n=GetFullPathNameW(graphics,32768,absolute,NULL);if(!n||n>=32768)return error(L"Preferences path is too long");wcscpy(graphics,absolute);}
+ if(!safe_location(saves,1,1)||!safe_location(graphics,0,1)||!safe_location(sessions,1,1)||!safe_location(temporary,1,1))return error(L"Cannot create portable save, settings or session directories.");
+ SetEnvironmentVariableW(L"TEMP",temporary);SetEnvironmentVariableW(L"TMP",temporary);SetEnvironmentVariableW(L"PYTHONDONTWRITEBYTECODE",L"1");
+ if(portable){
+  const wchar_t *cache_keys[]={L"LOCALAPPDATA",L"APPDATA",L"RECOMP_SHADER_CACHE"};
+  const wchar_t *cache_leaves[]={L"Cache/LocalAppData",L"Cache/Config",L"Cache/Shaders"};
+  for(unsigned k=0;k<3;k++)if(!topspin_portable_path(resolved,32768,root,NULL,cache_leaves[k],1)||!safe_location(resolved,1,1)||!SetEnvironmentVariableW(cache_keys[k],resolved))return error(L"Cannot configure portable runtime caches.");
+  if(!SetEnvironmentVariableW(L"MAX_SPIN_PORTABLE_ROOT",root))return error(L"Cannot configure portable installation root.");
+ }
  SetEnvironmentVariableW(L"TOPSPIN_GRAPHICS_INI",graphics);SetEnvironmentVariableW(L"TOPSPIN_CAREER_SAVE_VERSION",L"1");SetEnvironmentVariableW(L"TOPSPIN_CREATOR_MATERIAL_COHERENCE",L"1");SetEnvironmentVariableW(L"RECOMP_SYNTHETIC_PHYSICAL_NAMESPACE",L"1");
- if(!GetTempPathW(32768,temp))return error(L"Cannot create session");wchar_t session[32768];swprintf(session,32768,L"%lsMaxSpin-%lu-%llu",temp,(unsigned long)GetCurrentProcessId(),(unsigned long long)GetTickCount64());if(!CreateDirectoryW(session,NULL))return error(L"Cannot create private session directory");path(input,32768,session,L"launch-in.bin");path(output,32768,session,L"launch-out.bin");
+ wchar_t session[32768];int session_length=swprintf(session,32768,L"%ls/MaxSpin-%lu-%llu",sessions,(unsigned long)GetCurrentProcessId(),(unsigned long long)GetTickCount64());if(session_length<=0||session_length>=32768||!CreateDirectoryW(session,NULL))return error(L"Cannot create private session directory");path(input,32768,session,L"launch-in.bin");path(output,32768,session,L"launch-out.bin");
  int result=0,preserve_session=0;HANDLE log=INVALID_HANDLE_VALUE;
 #define SESSION_ERROR(text) do{result=error(text);goto cleanup;}while(0)
  wchar_t frozen[32768],family_path[32768],family[32]=L"auto";path(frozen,32768,session,L"render-startup.ini");path(family_path,32768,session,L"controller-family");
  HANDLE source=CreateFileW(graphics,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);unsigned char preferences[4096];DWORD preference_bytes=0;if(source!=INVALID_HANDLE_VALUE){LARGE_INTEGER bytes;BY_HANDLE_FILE_INFORMATION info;if(!GetFileInformationByHandle(source,&info)||(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))||!GetFileSizeEx(source,&bytes)||bytes.QuadPart>4096||!ReadFile(source,preferences,(DWORD)bytes.QuadPart,&preference_bytes,NULL)||preference_bytes!=bytes.QuadPart){CloseHandle(source);SESSION_ERROR(L"Cannot freeze graphics preferences");}CloseHandle(source);}HANDLE frozen_file=CreateFileW(frozen,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);DWORD frozen_bytes;if(frozen_file==INVALID_HANDLE_VALUE)SESSION_ERROR(L"Cannot freeze graphics preferences");int frozen_ok=WriteFile(frozen_file,preferences,preference_bytes,&frozen_bytes,NULL)&&frozen_bytes==preference_bytes;CloseHandle(frozen_file);if(!frozen_ok)SESSION_ERROR(L"Cannot freeze graphics preferences");SetEnvironmentVariableW(L"TOPSPIN_SESSION_RENDER_INI",frozen);
  if(GetEnvironmentVariableW(L"TOPSPIN_CONTROLLER_FAMILY",family,32)>=32)SESSION_ERROR(L"Invalid controller family");if(!wcscmp(family,L"switch"))wcscpy(family,L"nintendo");if(wcscmp(family,L"auto")&&wcscmp(family,L"xbox")&&wcscmp(family,L"playstation")&&wcscmp(family,L"nintendo"))SESSION_ERROR(L"Invalid controller family");char family_text[32];int family_bytes=WideCharToMultiByte(CP_UTF8,0,family,-1,family_text,31,NULL,NULL)-1;family_text[family_bytes++]='\n';HANDLE family_file=CreateFileW(family_path,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);DWORD family_written;if(family_file==INVALID_HANDLE_VALUE)SESSION_ERROR(L"Cannot create controller preference");int family_ok=WriteFile(family_file,family_text,(DWORD)family_bytes,&family_written,NULL)&&family_written==(DWORD)family_bytes;CloseHandle(family_file);if(!family_ok)SESSION_ERROR(L"Cannot create controller preference");SetEnvironmentVariableW(L"TOPSPIN_CONTROLLER_SESSION_FILE",family_path);
  wchar_t character_message[2048];int character_ok=topspin_windows_characters_begin(root,assets,characters,session,character_message,2048);
- wchar_t log_path[32768];path(log_path,32768,saves,L"MaxSpin.log");SECURITY_ATTRIBUTES log_security={sizeof log_security,NULL,TRUE};log=CreateFileW(log_path,FILE_APPEND_DATA,FILE_SHARE_READ,&log_security,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
+ wchar_t log_path[32768];if(!path(log_path,32768,saves,L"MaxSpin.log")||!safe_location(log_path,0,0))SESSION_ERROR(L"The game log path contains an unsafe link or alias.");SECURITY_ATTRIBUTES log_security={sizeof log_security,NULL,TRUE};log=CreateFileW(log_path,FILE_APPEND_DATA,FILE_SHARE_READ,&log_security,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,NULL);
  if(character_message[0]&&log!=INVALID_HANDLE_VALUE){char diagnostic[8192];int bytes=WideCharToMultiByte(CP_UTF8,0,character_message,-1,diagnostic,sizeof diagnostic,NULL,NULL);DWORD written;if(bytes>1){WriteFile(log,diagnostic,(DWORD)bytes-1,&written,NULL);WriteFile(log,"\r\n",2,&written,NULL);}}
  if(!character_ok)SESSION_ERROR(character_message);
  swprintf(event_name,96,L"Local\\MaxSpinQuit-%lu",(unsigned long)GetCurrentProcessId());quit_event=CreateEventW(NULL,TRUE,FALSE,event_name);if(!quit_event)SESSION_ERROR(L"Cannot create window control");SetEnvironmentVariableW(L"MAX_SPIN_QUIT_EVENT",event_name);SetEnvironmentVariableW(L"TOPSPIN_LAUNCH_PAGE_OUT",output);
  WNDCLASSW klass={.lpfnWndProc=procedure,.hInstance=instance,.hCursor=LoadCursorW(NULL,MAKEINTRESOURCEW(32512)),.lpszClassName=L"MaxSpinWindow"};if(!RegisterClassW(&klass))SESSION_ERROR(L"Cannot register window");TopspinGraphicsSettings preferences_model;topspin_graphics_settings_defaults(&preferences_model);if(preference_bytes)(void)topspin_graphics_settings_parse((const char*)preferences,preference_bytes,&preferences_model,NULL,0);DWORD style=WS_OVERLAPPEDWINDOW;int x=CW_USEDEFAULT,y=CW_USEDEFAULT,client_width=1280,client_height=720;RECT work;if(SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0)){if(client_width>work.right-work.left){client_width=work.right-work.left;client_height=client_width*9/16;}if(client_height>work.bottom-work.top-48){client_height=work.bottom-work.top-48;client_width=client_height*16/9;}}RECT bounds={0,0,client_width,client_height};if(preferences_model.window_mode==TOPSPIN_WINDOW_FULLSCREEN){style=WS_POPUP;x=0;y=0;bounds.right=GetSystemMetrics(SM_CXSCREEN);bounds.bottom=GetSystemMetrics(SM_CYSCREEN);}else AdjustWindowRect(&bounds,style,FALSE);window=CreateWindowExW(0,klass.lpszClassName,L"Max Spin",style,x,y,bounds.right-bounds.left,bounds.bottom-bounds.top,NULL,NULL,instance,NULL);if(!window)SESSION_ERROR(L"Cannot create game window");ShowWindow(window,show);UpdateWindow(window);wchar_t identity[40];swprintf(identity,40,L"%llu",(unsigned long long)(uintptr_t)window);SetEnvironmentVariableW(L"MAX_SPIN_PARENT_HWND",identity);
- wchar_t capture_base[32768]={0};DWORD capture_length=GetEnvironmentVariableW(L"TOPSPIN_CAPTURE_PREFIX",capture_base,32768);if(capture_length>=32768)SESSION_ERROR(L"Capture output path is too long");
+ wchar_t capture_base[32768]={0};DWORD capture_length=GetEnvironmentVariableW(L"TOPSPIN_CAPTURE_PREFIX",capture_base,32768);if(capture_length>=32768)SESSION_ERROR(L"Capture output path is too long");if(capture_length&&portable){wchar_t validated[32768];if(!topspin_portable_path(validated,32768,root,capture_base,L"Captures/frame",1)||!safe_location(validated,0,1))SESSION_ERROR(L"Capture output must remain inside the portable installation.");wcscpy(capture_base,validated);}
  int has_input=0;for(unsigned transitions=0;!closing&&transitions<4096;transitions++){
   if(capture_length){wchar_t capture_worker[32768];int length=swprintf(capture_worker,32768,L"%ls.%06u-%ls",capture_base,transitions,keys[image]);if(length<0||length>=32768){result=error(L"Capture output path is too long");break;}SetEnvironmentVariableW(L"TOPSPIN_CAPTURE_PREFIX",capture_worker);}
   wchar_t exe[32768],name[64],original[32768],cmd[65536];swprintf(name,64,L"topspin_%ls.exe",keys[image]);if(!path(exe,32768,root,name)||!path(original,32768,assets,files[image])){result=error(L"Game path too long");break;}

@@ -17,3 +17,17 @@ file(TO_CMAKE_PATH "${Python3_EXECUTABLE}" fixture_python)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/test_python.h" "#define TEST_PYTHON L\"${fixture_python}\"\n")
 add_test(NAME character_launcher_contract COMMAND character_launcher_contract)
 set_tests_properties(character_launcher_contract PROPERTIES TIMEOUT 60)
+
+# Exercise the actual native launcher only through its missing-assets preflight.
+# Stubs abort before any graphics, game, or athlete-session preparation.
+add_executable(portable_launcher_preflight WIN32 ../src/launcher_windows.c
+  ../../../native-linux/src/graphics_settings.c ../src/graphics_settings_windows.c preflight_stubs.c)
+target_include_directories(portable_launcher_preflight PRIVATE ../src ../../../native-linux/src)
+target_link_libraries(portable_launcher_preflight PRIVATE shell32 user32)
+target_link_options(portable_launcher_preflight PRIVATE -municode -Wl,--stack,8388608)
+add_executable(frozen_runtime_fixture frozen_fixture.c ../src/character_command.c)
+target_include_directories(frozen_runtime_fixture PRIVATE ../src "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_options(frozen_runtime_fixture PRIVATE -municode -Wl,--stack,8388608)
+add_dependencies(character_launcher_contract frozen_runtime_fixture portable_launcher_preflight)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/test_frontend.h" CONTENT
+  "#define TEST_FROZEN L\"$<TARGET_FILE:frozen_runtime_fixture>\"\n#define TEST_LAUNCHER L\"$<TARGET_FILE:portable_launcher_preflight>\"\n")

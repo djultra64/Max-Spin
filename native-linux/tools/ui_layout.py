@@ -145,12 +145,16 @@ def prepare(assets,output,asset_view=None):
   if temporary.exists():discard_tree(temporary)
   raise
 
+def source_directory(cache,report):
+ source=Path(report.get('source',''))
+ return (Path(cache)/source).resolve()if not source.is_absolute()else source.resolve()
+
 def select_assets(assets,cache):
  assets=Path(assets).resolve();cache=Path(cache).absolute()
  if not cache.exists()and not cache.is_symlink():return assets
  if cache.is_symlink()or not cache.is_dir():raise ValueError('UI cache must be a plain directory')
  report=json.loads((cache/'manifest.json').read_text())
- if report.get('version')!=1 or report.get('source')!=str(assets)or report.get('footer_delta')!=FOOTER_DY or not report.get('intro_fixed'):raise ValueError('UI cache does not match this installation; prepare a new copy')
+ if report.get('version')!=1 or source_directory(cache,report)!=assets or report.get('footer_delta')!=FOOTER_DY or not report.get('intro_fixed'):raise ValueError('UI cache does not match this installation; prepare a new copy')
  known=json.loads((NATIVE/'config/ui_layout_sources.json').read_text())
  if 'Media/Rui/MatchIntro.rui'not in report['archives']or report.get('footer_nodes',0)<12:raise ValueError('UI layout cache is incomplete')
  for relative,record in report['archives'].items():

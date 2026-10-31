@@ -21,8 +21,10 @@
 ## Getting started
 
 1. Download the package for your platform from [Releases](https://github.com/djultra64/Max-Spin/releases/latest).
-2. Supply your own extracted Top Spin game files and prepare the local resources with Python 3, following the [installation guide](docs/install.md).
-3. Start **MaxSpin.exe** on Windows or **MaxSpin.sh** on Linux.
+2. Open **MaxSpin.exe** on Windows or **MaxSpin.sh** on Linux.
+3. Select your **Top Spin Xbox ISO**, choose the portable installation folder and click **Install**. When preparation finishes, click **Play**.
+
+The portable installer includes its tools: no separate Python, extraction utility, terminal or administrator access. Game data, saves, settings and temporary files stay inside the folder you choose. See the [installation guide](docs/install.md).
 
 See [controls](docs/controls.md), [graphics settings](docs/graphics.md) and [troubleshooting](docs/troubleshooting.md) for setup details. To compile the project yourself, follow the [source build instructions](docs/build.md).
 
@@ -71,7 +73,7 @@ validates complete packages and conflicts; it does not sculpt faces or convert
 arbitrary PC models. The guide lists supported native formats and current
 female-resource conversion limits. Never replace whole shared databases: use
 the supported target-specific typed updates. Original assets and saves stay
-unchanged. Both launchers automatically load the same numbered folders when a session starts. Windows uses the Python 3 installation already required for setup, freezes only changed archives and verifies them in the native workers; it requires no administrator access or filesystem links. Use `--characters PATH` with either launcher to choose another package directory.
+unchanged. Both launchers automatically load the same numbered folders when a session starts. Windows uses the bundled preparation runtime, freezes only changed archives and verifies them in the native workers; it requires no separate Python, administrator access or filesystem links. Use `--characters PATH` with either launcher to choose another package directory.
 
 The replay correction scales the original replay rectangles and camera aspect to
 16:9 while retaining the original camera sequence and subviews. This release

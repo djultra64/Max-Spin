@@ -1,77 +1,56 @@
-# Using a prebuilt preview
+# Install Max Spin from your Xbox ISO
 
-A native package includes the Max Spin launcher, nine native game modules, controller artwork, preparation tools, source, licenses, and runtime relinking materials. **You must supply your own extracted original Xbox game files.** These previews have incomplete compatibility; see the limitations in the [README](../README.md) and [Windows status](windows.md).
+Download and extract the complete package for Windows or Linux.
 
-## First launch
+1. Open **MaxSpin.exe** on Windows or **MaxSpin.sh** on Linux.
+2. Choose your original **Top Spin Xbox ISO**.
+3. Choose a new or empty folder for the portable installation and click **Install**.
 
-On Linux, double-clicking MaxSpin.sh now shows a visible message when the original
-game files are missing, the native executables have not been built or are
-incomplete, or the local resources have not been prepared. It checks these
-requirements before opening the game window. Unexpected startup failures also
-show a message and save their details in native-linux/logs/launcher-*.log.
-The launcher uses Zenity or KDialog for the message. If neither is available,
-it opens the explanation with the desktop text-file opener (xdg-open or GIO).
+Max Spin extracts the ISO, checks that the game is compatible and prepares its
+resources automatically. When preparation finishes, click **Play**. You do not
+need Python, an extraction utility, a terminal, PowerShell or administrator
+access. The package includes its preparation tools and runtime libraries.
+Your computer must support the package's operating system and Vulkan graphics.
 
-An ISO file alone is not ready to launch. This version uses the extracted disc
-contents; put those files, including Media and all nine executable images, in
-assets and follow the preparation step below. The launcher does not extract an
-ISO or compile the game automatically. A prebuilt package already includes the
-native executables, so its first setup does not require recompilation.
+The ISO stays unchanged and can be disconnected after installation. Use an Xbox
+ISO or XISO; PC game files, archives and images from another console are not
+supported. An incompatible or damaged image produces an explanation in the
+assistant. You never need to find or select an individual game executable.
 
-## Prepare your files
+## Portable folder
 
-1. Extract the complete package into a writable folder.
-2. Install Python 3. Resource preparation uses its standard library; the translation packages listed in the build instructions are needed when generating game code from source.
-3. Place your extracted disc contents in the package's `assets` folder, preserving the original filenames and directories, including `Media` and all [nine executable images](build.md#prepare-the-game-files).
-4. Follow the preparation command for your platform below. It reads the original resources and creates local caches without modifying the originals.
+Open the installed **MaxSpin.exe** or **MaxSpin.sh** to play again. The complete
+folder can be moved to another writable location on a compatible computer of the
+same operating system. Keep its contents together. Everything Max Spin creates
+belongs inside that folder:
 
-Preparation runs once per fresh package and refuses existing resource directories or a build manifest. Keep the package contents together. When updating, extract the new package separately and preserve your complete save folder.
+- `assets/`: game data extracted from your ISO.
+- `Saves/`: your progress.
+- `Settings/`: graphics and controller preferences.
+- `Cache/` and `native-linux/cache/`: resources, shaders and temporary sessions.
+- `Logs/`: startup diagnostics. The Windows supervisor also writes its log inside `Saves/`.
 
-## Linux
+The installer creates no system installation, registry settings, desktop
+shortcuts or files in AppData/home configuration folders. Existing system
+graphics drivers and operating-system components are used normally.
 
-Requirements are 64-bit Linux, **glibc 2.38 or newer**, SDL3, Vulkan, shaderc, and a Vulkan-capable graphics driver. Shaderc's SPIRV-Tools and C++ runtime dependencies must also be installed. The native executables directly require glibc symbols through version 2.38; compatibility also depends on your distribution's library versions. Broader distribution compatibility is still being tested.
+If installation fails or you cancel, the assistant removes the unfinished files
+it created and allows another attempt. It does not reuse an incomplete install.
+An occupied destination is refused; choose a new or empty folder.
 
-From the extracted package folder:
+## Optional athlete packages
 
-```sh
-python3 native-linux/tools/setup_game.py --build-dir bin
-./MaxSpin.sh
-```
+Put compatible packages in the numbered `characters/1` through `characters/32`
+folders inside the installed game, then restart Max Spin. Both platforms use the
+same format and bundled preparation tools. No separate Python installation is
+needed. See [package authoring](../characters/AUTHORING.md).
 
-Preparation also creates a private UI layout cache for lower footer prompts and the corrected match-intro transition. Original game files stay unchanged. Linux uses a private asset view; Windows redirects authenticated UI archives and frozen athlete-package archives and requires neither administrator access nor filesystem links. Keep this cache with its prepared installation; create it again when moving to a fresh package.
+## Development and verification
 
-Linux runtime libraries are supplied by your system. A missing-library error should be resolved through the matching distribution packages. Saves are stored in `native-linux/saves`; graphics preferences are in `native-linux/cache/pc-preferences/graphics.ini`.
+These instructions describe the new portable installer. A candidate is ready
+for publication only after the frozen installation flow has passed on both
+platforms. Compiling it or matching FEATURES.json alone is insufficient.
 
-## Windows
-
-Windows native previews remain experimental. The verified gameplay flow and remaining limits are described in [Windows status](windows.md). A completed Windows package includes its non-system runtime DLLs. Keep `MaxSpin.exe`, the nine `topspin_<module>.exe` files, and those DLLs together in the extracted package folder.
-
-From PowerShell in that folder:
-
-```powershell
-python native-linux/tools/setup_game.py --build-dir .
-.\MaxSpin.exe --assets "$PWD\assets" --resources "$PWD\native-linux\cache" --image menu
-```
-
-Use `py -3` instead of `python` if that is how your Python 3 installation is invoked. The `--resources` argument selects the local resources created by preparation. You can select another original game directory with `--assets`; use that same directory with `setup_game.py --assets` during preparation.
-
-Saves default to `Max Spin/Saves` under Windows Local AppData. Graphics preferences default to `Max Spin/graphics.ini` there. The launcher accepts `--saves` and `--graphics` for explicit locations. Preserve the complete save folder when moving or updating the application.
-
-## Optional athlete packages on both platforms
-
-Place compatible packages in the numbered `characters/` folders beside the
-launcher. Both platforms use the same manifest, native outfits, portraits,
-scoreboard name lettering and validation. Empty or rejected slots retain their
-original athlete. Keep Python3 available on Windows; it prepares the frozen
-session before the game window opens. No administrator privileges or filesystem
-links are needed. Only changed archives are copied. Original game files and
-save files remain separate.
-
-See [package authoring](../characters/AUTHORING.md). Both launchers accept
-`--characters PATH`. Restart the game to load package changes.
-
-## Playing and reporting issues
-
-The default is a 60 FPS host cap. Sustained 60 FPS, validated 120 FPS gameplay, complete Career appearance compatibility, and all-mode coverage are not promised by a preview package. See [controls](controls.md), [graphics](graphics.md), and [troubleshooting](troubleshooting.md).
-
-Original game rights are separate from Max Spin's own code license. Native game modules contain generated translations of the original executable images; the Max Spin MIT license does not license that underlying game code. Bundled runtime components retain their own licenses. Source and instructions for rebuilding and relinking them are included in `RELINKING.md` in native packages.
+For building source rather than playing a downloaded package, see
+[build instructions](build.md) and [Windows development](windows.md).
+Experimental gameplay limitations remain in the [README](../README.md).

@@ -68,7 +68,12 @@ def verify_art(art):
             raise ValueError('controller artwork identity mismatch: ' + filename)
 
 
-def prepare(assets, build_dir, cache_root, art):
+def prepare(assets, build_dir, cache_root, art, progress=None, cancelled=None):
+    def step(done,detail):
+        if cancelled and cancelled():
+            raise InterruptedError('Instalación cancelada.')
+        if progress:
+            progress('prepare', done, 11, detail)
     images = json.loads((NATIVE / 'config/images.json').read_text())
     for filename in images.values():
         if Path(filename).name != filename or not (assets / filename).is_file():
@@ -104,22 +109,26 @@ def prepare(assets, build_dir, cache_root, art):
     published = []
     temporary = Path(tempfile.mkdtemp(prefix='.max-spin-setup-', dir=cache_root))
     try:
+        step(0, 'Preparando los menús…')
         chunks = prepare_graphics(assets / 'Media/MenuPart/Rui/MainMenu.rui', temporary / OUTPUTS[0])
         expected = (NATIVE / 'src/menu_graphics_resources.h').read_bytes()
         if resource_header(chunks) != expected:
             raise ValueError('generated menu does not match the compiled resource guards')
+        step(1, 'Preparando los gráficos de la interfaz…')
         prepare_sprites(assets, temporary / OUTPUTS[1])
         base = temporary / 'prompt-base'
         base.mkdir(mode=0o700)
         final = temporary / PROMPT_CACHE
         final.mkdir(mode=0o700)
-        for image in PROMPT_IMAGES:
+        for index,image in enumerate(PROMPT_IMAGES):
+            step(2+index, 'Preparando los controles: '+image)
             prepare_prompts(assets, base / image, image,
                             NATIVE / 'tools/prepare_menu_prompts.py', art)
             if image in ('game', 'training'):
                 prepare_hud(assets, base / image, final / image)
             else:
                 shutil.copytree(base / image, final / image)
+        step(9, 'Adaptando la interfaz a PC…')
         layout = prepare_ui_layout(assets, temporary / UI_LAYOUT)
         if ui_layout_header(layout) != (NATIVE / 'src/ui_layout_resources.h').read_bytes():
             raise ValueError('generated UI layout does not match the compiled resource guards')
@@ -141,6 +150,7 @@ def prepare(assets, build_dir, cache_root, art):
         manifest['local_resource_sha256'] = resources
         # Publish only after all inputs, generated guards and modules validate.
         # A failed final manifest commit rolls back only this invocation's trees.
+        step(10, 'Comprobando los recursos preparados…')
         for name in LOCAL_OUTPUTS:
             source, destination = temporary / name, cache_root / name
             # mkdir reserves the final name exclusively. Never replace a
