@@ -37,7 +37,7 @@ still needs verification. Empty or invalid folders retain the original athlete.
 This release includes the tools and empty folders; private custom athlete art
 and original game resources are supplied separately by their owners.
 
-The [complete authoring guide, in Spanish](characters/AUTHORING.md) explains the
+The [complete authoring guide](characters/AUTHORING.md) explains the
 folder structure, required files, validation, installation and rollback. Each
 package requires `manifest.json`, both native Xbox outfit WADs, both model detail
 levels, matching skeleton/material/texture dependencies, and native menu assets:
